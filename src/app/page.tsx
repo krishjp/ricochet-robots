@@ -10,15 +10,84 @@ type Robot = Position & { color: RobotColor };
 type Robots = { [key in RobotColor]: Robot };
 type Walls = { [key: string]: { north?: boolean; east?: boolean; south?: boolean; west?: boolean } };
 type TargetChip = Position & { color: RobotColor };
+type OptimalPathStep = { text: string; pos: Position };
 
 const posKey = (p: Position) => `${p.x},${p.y}`;
+
+const moveLogic = (x: number, y: number, direction: 'north' | 'south' | 'east' | 'west', currentRobots: Robots, walls: Walls): Position | null => {
+    const robotPositions = new Set(Object.values(currentRobots).map(posKey));
+    let newPos = { x, y };
+
+    if (direction === 'north') {
+        while (newPos.y > 0 && !walls[posKey(newPos)]?.north && !walls[posKey({x: newPos.x, y: newPos.y - 1})]?.south && !robotPositions.has(posKey({x: newPos.x, y: newPos.y - 1}))) {
+            newPos.y--;
+        }
+    } else if (direction === 'south') {
+        while (newPos.y < BOARD_SIZE - 1 && !walls[posKey(newPos)]?.south && !walls[posKey({x: newPos.x, y: newPos.y + 1})]?.north && !robotPositions.has(posKey({x: newPos.x, y: newPos.y + 1}))) {
+            newPos.y++;
+        }
+    } else if (direction === 'west') {
+        while (newPos.x > 0 && !walls[posKey(newPos)]?.west && !walls[posKey({x: newPos.x - 1, y: newPos.y})]?.east && !robotPositions.has(posKey({x: newPos.x - 1, y: newPos.y}))) {
+            newPos.x--;
+        }
+    } else if (direction === 'east') {
+        while (newPos.x < BOARD_SIZE - 1 && !walls[posKey(newPos)]?.east && !walls[posKey({x: newPos.x + 1, y: newPos.y})]?.west && !robotPositions.has(posKey({x: newPos.x + 1, y: newPos.y}))) {
+            newPos.x++;
+        }
+    }
+    
+    return (newPos.x !== x || newPos.y !== y) ? newPos : null;
+};
+
+const calculateMoves = (robot: Robot, currentRobots: Robots, walls: Walls): Position[] => {
+    const moves: Position[] = [];
+    const directions: ('north' | 'south' | 'east' | 'west')[] = ['north', 'south', 'east', 'west'];
+    for (const direction of directions) {
+        const newPos = moveLogic(robot.x, robot.y, direction, currentRobots, walls);
+        if(newPos) moves.push(newPos);
+    }
+    return moves;
+};
+
+const isReachable = (startRobots: Robots, walls: Walls, target: TargetChip): boolean => {
+    const q: {robots: Robots}[] = [{robots: startRobots}];
+    const visited = new Set<string>([JSON.stringify(Object.values(startRobots).map(p => posKey(p)).sort())]);
+    let iterations = 0;
+
+    while (q.length > 0) {
+        iterations++;
+        if (iterations > 15000) return false;
+
+        const { robots: currentRobots } = q.shift()!;
+        
+        if (currentRobots[target.color].x === target.x && currentRobots[target.color].y === target.y) {
+            return true;
+        }
+
+        for (const color of ROBOT_COLORS) {
+            const directions: ('north' | 'south' | 'east' | 'west')[] = ['north', 'south', 'east', 'west'];
+            for (const direction of directions) {
+                const newPos = moveLogic(currentRobots[color].x, currentRobots[color].y, direction, currentRobots, walls);
+                if (newPos) {
+                    const nextRobots = JSON.parse(JSON.stringify(currentRobots)) as Robots;
+                    nextRobots[color] = { ...nextRobots[color], ...newPos };
+                    const key = JSON.stringify(Object.values(nextRobots).map(p => posKey(p)).sort());
+                    if(!visited.has(key)) {
+                         visited.add(key);
+                         q.push({robots: nextRobots});
+                    }
+                }
+            }
+        }
+    }
+    return false;
+};
 
 const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: TargetChip } => {
     const walls: Walls = {};
     const center = BOARD_SIZE / 2 - 1;
-
-    // Center 2x2
     const centerPositions = new Set<string>();
+
     for (let i = center; i <= center + 1; i++) {
         for (let j = center; j <= center + 1; j++) {
             centerPositions.add(posKey({x: i, y: j}));
@@ -30,51 +99,57 @@ const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: Ta
         }
     }
 
-    // Outer walls
     for (let i = 0; i < BOARD_SIZE; i++) {
         if (!walls[posKey({ x: i, y: 0 })]) walls[posKey({ x: i, y: 0 })] = {};
         walls[posKey({ x: i, y: 0 })]!.north = true;
-
         if (!walls[posKey({ x: i, y: BOARD_SIZE - 1 })]) walls[posKey({ x: i, y: BOARD_SIZE - 1 })] = {};
         walls[posKey({ x: i, y: BOARD_SIZE - 1 })]!.south = true;
-
         if (!walls[posKey({ x: 0, y: i })]) walls[posKey({ x: 0, y: i })] = {};
         walls[posKey({ x: 0, y: i })]!.west = true;
-        
         if (!walls[posKey({ x: BOARD_SIZE - 1, y: i })]) walls[posKey({ x: BOARD_SIZE - 1, y: i })] = {};
         walls[posKey({ x: BOARD_SIZE - 1, y: i })]!.east = true;
     }
 
-    // Random L-shaped walls
     const forbiddenForWalls = new Set<string>(centerPositions);
-    const wallCount = 12;
+
+    // Forbid the 3x3 area around the center
+    const centerStart = center - 1;
+
+    for (let i = centerStart; i < centerStart + 3; i++) {
+        for (let j = centerStart; j < centerStart + 3; j++) {
+            forbiddenForWalls.add(posKey({x: i, y: j}));
+        }
+    }
+
+    const wallCount = 20;
     let placedWalls = 0;
     let attempts = 0;
 
-    while(placedWalls < wallCount && attempts < 500) {
+    while(placedWalls < wallCount && attempts < 1000) {
         attempts++;
-        const x = Math.floor(Math.random() * (BOARD_SIZE - 2)) + 1; // Avoid edges for simpler logic
-        const y = Math.floor(Math.random() * (BOARD_SIZE - 2)) + 1;
+        const x = Math.floor(Math.random() * BOARD_SIZE);
+        const y = Math.floor(Math.random() * BOARD_SIZE);
         const key = posKey({x,y});
 
-        if (!forbiddenForWalls.has(key)) {
-             if (!walls[key]) walls[key] = {};
-            const orientation = Math.floor(Math.random() * 4);
-            if (orientation === 0) { // North-West
-                walls[key]!.north = true;
-                walls[key]!.west = true;
-            } else if (orientation === 1) { // North-East
-                walls[key]!.north = true;
-                walls[key]!.east = true;
-            } else if (orientation === 2) { // South-West
-                walls[key]!.south = true;
-                walls[key]!.west = true;
-            } else { // South-East
-                walls[key]!.south = true;
-                walls[key]!.east = true;
+        // target or surrounding forbidden check
+        let isSpaceClear = true;
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (forbiddenForWalls.has(posKey({ x: x + dx, y: y + dy }))) {
+                    isSpaceClear = false;
+                    break;
+                }
             }
-
-            // Add the cell and its neighbors to the forbidden list to enforce spacing
+            if (!isSpaceClear) break;
+        }
+        
+        if (isSpaceClear) {
+            if (!walls[key]) walls[key] = {};
+            const orientation = Math.floor(Math.random() * 4);
+            if (orientation === 0) { walls[key]!.north = true; walls[key]!.west = true; }
+            else if (orientation === 1) { walls[key]!.north = true; walls[key]!.east = true; }
+            else if (orientation === 2) { walls[key]!.south = true; walls[key]!.west = true; }
+            else { walls[key]!.south = true; walls[key]!.east = true; }
             for (let dx = -1; dx <= 1; dx++) {
                 for (let dy = -1; dy <= 1; dy++) {
                     forbiddenForWalls.add(posKey({ x: x + dx, y: y + dy }));
@@ -84,8 +159,6 @@ const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: Ta
         }
     }
 
-
-    // --- ITEM PLACEMENT ---
     const occupied = new Set<string>();
     const placeItem = (): Position => {
         let pos;
@@ -104,7 +177,6 @@ const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: Ta
         const { x, y } = placeItem();
         robots[color] = { x, y, color };
     });
-
     const targetPos = placeItem();
     const targetColor = ROBOT_COLORS[Math.floor(Math.random() * ROBOT_COLORS.length)];
     const target: TargetChip = { ...targetPos, color: targetColor };
@@ -120,76 +192,16 @@ export default function RicochetRobotsPage() {
     const [selectedRobot, setSelectedRobot] = useState<RobotColor | null>(null);
     const [moveCount, setMoveCount] = useState(0);
     const [optimalMoves, setOptimalMoves] = useState<string[] | null>(null);
+    const [optimalPathCoords, setOptimalPathCoords] = useState<Position[] | null>(null);
     const [initialState, setInitialState] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [solved, setSolved] = useState(false);
-
-    const isReachable = useCallback((startRobots: Robots, walls: Walls, target: TargetChip): boolean => {
-        const q: {robots: Robots}[] = [{robots: startRobots}];
-        const visited = new Set<string>([JSON.stringify(Object.values(startRobots).map(p => posKey(p)).sort())]);
-        let iterations = 0;
-
-        while (q.length > 0) {
-            iterations++;
-            if (iterations > 1000) return false; // Safety break
-
-            const { robots: currentRobots } = q.shift()!;
-            
-            if (currentRobots[target.color].x === target.x && currentRobots[target.color].y === target.y) {
-                return true;
-            }
-
-            for (const color of ROBOT_COLORS) {
-                const robotPositions = new Set(Object.values(currentRobots).map(posKey));
-
-                // Move Logically in all 4 directions
-                let y = currentRobots[color].y;
-                while (y > 0 && !walls[posKey({x: currentRobots[color].x, y})]?.north && !robotPositions.has(posKey({x: currentRobots[color].x, y: y-1}))) y--;
-                if(y !== currentRobots[color].y) {
-                    const nextRobots = JSON.parse(JSON.stringify(currentRobots)) as Robots;
-                    nextRobots[color].y = y;
-                    const key = JSON.stringify(Object.values(nextRobots).map(p => posKey(p)).sort());
-                    if(!visited.has(key)) { visited.add(key); q.push({robots: nextRobots}); }
-                }
-
-                // South
-                y = currentRobots[color].y;
-                while (y < BOARD_SIZE - 1 && !walls[posKey({x: currentRobots[color].x, y})]?.south && !robotPositions.has(posKey({x: currentRobots[color].x, y: y+1}))) y++;
-                if(y !== currentRobots[color].y) {
-                    const nextRobots = JSON.parse(JSON.stringify(currentRobots)) as Robots;
-                    nextRobots[color].y = y;
-                    const key = JSON.stringify(Object.values(nextRobots).map(p => posKey(p)).sort());
-                    if(!visited.has(key)) { visited.add(key); q.push({robots: nextRobots}); }
-                }
-
-                // West
-                let x = currentRobots[color].x;
-                while (x > 0 && !walls[posKey({x, y: currentRobots[color].y})]?.west && !robotPositions.has(posKey({x: x-1, y: currentRobots[color].y}))) x--;
-                if(x !== currentRobots[color].x) {
-                    const nextRobots = JSON.parse(JSON.stringify(currentRobots)) as Robots;
-                    nextRobots[color].x = x;
-                    const key = JSON.stringify(Object.values(nextRobots).map(p => posKey(p)).sort());
-                    if(!visited.has(key)) { visited.add(key); q.push({robots: nextRobots}); }
-                }
-
-                // East
-                x = currentRobots[color].x;
-                while (x < BOARD_SIZE - 1 && !walls[posKey({x, y: currentRobots[color].y})]?.east && !robotPositions.has(posKey({x: x+1, y: currentRobots[color].y}))) x++;
-                if(x !== currentRobots[color].x) {
-                    const nextRobots = JSON.parse(JSON.stringify(currentRobots)) as Robots;
-                    nextRobots[color].x = x;
-                    const key = JSON.stringify(Object.values(nextRobots).map(p => posKey(p)).sort());
-                    if(!visited.has(key)) { visited.add(key); q.push({robots: nextRobots}); }
-                }
-            }
-        }
-        return false;
-    }, []);
 
     const setupNewGame = useCallback(() => {
         setLoading(true);
         setSelectedRobot(null);
         setOptimalMoves(null);
+        setOptimalPathCoords(null);
         setSolved(false);
 
         const generate = () => {
@@ -202,42 +214,15 @@ export default function RicochetRobotsPage() {
                 setMoveCount(0);
                 setLoading(false);
             } else {
-                setTimeout(generate, 0); // Try again asynchronously
+                setTimeout(generate, 0);
             }
         };
         generate();
-    }, [isReachable]);
+    }, []);
 
     useEffect(() => {
         setupNewGame();
     }, [setupNewGame]);
-
-    const calculateMoves = (robot: Robot, currentRobots: Robots, walls: Walls): Position[] => {
-        const moves: Position[] = [];
-        const robotPositions = new Set(Object.values(currentRobots).filter(r => r.color !== robot.color).map(posKey));
-        
-        // North
-        let y = robot.y;
-        while (y > 0 && !walls[posKey({ x: robot.x, y })]?.north && !robotPositions.has(posKey({ x: robot.x, y: y - 1 }))) y--;
-        if (y !== robot.y) moves.push({ x: robot.x, y });
-
-        // South
-        y = robot.y;
-        while (y < BOARD_SIZE - 1 && !walls[posKey({ x: robot.x, y })]?.south && !robotPositions.has(posKey({ x: robot.x, y: y + 1 }))) y++;
-        if (y !== robot.y) moves.push({ x: robot.x, y });
-
-        // West
-        let x = robot.x;
-        while (x > 0 && !walls[posKey({ x, y: robot.y })]?.west && !robotPositions.has(posKey({ x: x - 1, y: robot.y }))) x--;
-        if (x !== robot.x) moves.push({ x, y: robot.y });
-
-        // East
-        x = robot.x;
-        while (x < BOARD_SIZE - 1 && !walls[posKey({ x, y: robot.y })]?.east && !robotPositions.has(posKey({ x: x + 1, y: robot.y }))) x++;
-        if (x !== robot.x) moves.push({ x, y: robot.y });
-        
-        return moves;
-    };
     
     const handleCellClick = (x: number, y: number) => {
        if (solved) return;
@@ -263,22 +248,23 @@ export default function RicochetRobotsPage() {
         setSelectedRobot(null);
     };
 
-    const solve = () => {
+    const solve = useCallback(() => {
         if (!initialState || !walls || !target) return;
         
         const startRobots: Robots = JSON.parse(initialState);
-        const q: { robots: Robots; path: string[] }[] = [{ robots: startRobots, path: [] }];
+        const q: { robots: Robots; path: OptimalPathStep[] }[] = [{ robots: startRobots, path: [] }];
         const visited = new Set<string>([JSON.stringify(Object.values(startRobots).map((p: Robot) => posKey(p)).sort())]);
         
         while (q.length > 0) {
             const { robots: currentRobots, path } = q.shift()!;
             
             if (currentRobots[target.color].x === target.x && currentRobots[target.color].y === target.y) {
-                setOptimalMoves(path);
+                setOptimalMoves(path.map(p => p.text));
+                setOptimalPathCoords(path.map(p => p.pos));
                 return;
             }
 
-            if (path.length > 25) continue; // Safety break for performance
+            if (path.length > 25) continue;
 
             for (const color of ROBOT_COLORS) {
                  const possibleMoves = calculateMoves(currentRobots[color], currentRobots, walls);
@@ -291,14 +277,14 @@ export default function RicochetRobotsPage() {
 
                     if (!visited.has(stateKey)) {
                         visited.add(stateKey);
-                        const newPath = [...path, `${color} to ${move.x},${move.y}`];
+                        const newPath = [...path, { text: `${color} to ${move.x},${move.y}`, pos: move }];
                         q.push({ robots: newRobots, path: newPath });
                     }
                 }
             }
         }
         setOptimalMoves(["Could not find a solution in a reasonable time."]);
-    };
+    }, [initialState, walls, target]);
     
     const resetRound = () => {
         if (!initialState) return;
@@ -306,6 +292,7 @@ export default function RicochetRobotsPage() {
         setMoveCount(0);
         setSelectedRobot(null);
         setOptimalMoves(null);
+        setOptimalPathCoords(null);
         setSolved(false);
     };
 
@@ -338,8 +325,10 @@ export default function RicochetRobotsPage() {
                     const robot = Object.values(robots).find(r => r.x === x && r.y === y);
                     const isTarget = target.x === x && target.y === y;
                     const isMoveTarget = possibleMoves.some(p => p.x === x && p.y === y);
+                    const optimalMoveStep = optimalPathCoords?.findIndex(p => p.x === x && p.y === y);
 
-                    let wallClasses = 'border border-slate-200'; // Grid lines
+
+                    let wallClasses = 'border border-slate-200';
                     if (wall?.north) wallClasses += ' border-t-slate-800 border-t-2';
                     if (wall?.south) wallClasses += ' border-b-slate-800 border-b-2';
                     if (wall?.west) wallClasses += ' border-l-slate-800 border-l-2';
@@ -360,6 +349,13 @@ export default function RicochetRobotsPage() {
                                 />
                             )}
                             {isMoveTarget && <div className="absolute w-1/3 h-1/3 bg-yellow-400/70 rounded-full cursor-pointer animate-pulse"></div>}
+                            {optimalMoveStep !== undefined && optimalMoveStep > -1 && (
+                                <div className="absolute inset-0 flex items-start justify-start pointer-events-none z-10">
+                                    <div className="flex items-center justify-center w-2/5 h-2/5 aspect-square bg-black/75 text-white text-xs font-bold rounded-full ring-2 ring-white transform -translate-x+3/2 -translate-y+3/2">
+                                        {optimalMoveStep + 1}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     );
                 })}
@@ -403,3 +399,4 @@ export default function RicochetRobotsPage() {
         </main>
     );
 }
+
