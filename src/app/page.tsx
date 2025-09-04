@@ -2,7 +2,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Target, Bot, RotateCcw, RefreshCw, Dices, ArrowRight } from 'lucide-react';
 
-// --- TYPES AND CONSTANTS ---
 const BOARD_SIZE = 16;
 const ROBOT_COLORS = ["red", "blue", "green", "yellow"] as const;
 type RobotColor = typeof ROBOT_COLORS[number];
@@ -10,19 +9,15 @@ type Position = { x: number; y: number };
 type Robot = Position & { color: RobotColor };
 type Robots = { [key in RobotColor]: Robot };
 type Walls = { [key: string]: { north?: boolean; east?: boolean; south?: boolean; west?: boolean } };
-// This is the corrected type. The target color must be one of the robot colors.
 type TargetChip = Position & { color: RobotColor };
 
-// --- HELPER FUNCTIONS ---
 const posKey = (p: Position) => `${p.x},${p.y}`;
 
 const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: TargetChip } => {
     const walls: Walls = {};
     const center = BOARD_SIZE / 2 - 1;
 
-    // --- WALL GENERATION ---
-
-    // 1. Center 2x2 block walls
+    // Center 2x2
     const centerPositions = new Set<string>();
     for (let i = center; i <= center + 1; i++) {
         for (let j = center; j <= center + 1; j++) {
@@ -35,7 +30,7 @@ const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: Ta
         }
     }
 
-    // 2. Outer walls
+    // Outer walls
     for (let i = 0; i < BOARD_SIZE; i++) {
         if (!walls[posKey({ x: i, y: 0 })]) walls[posKey({ x: i, y: 0 })] = {};
         walls[posKey({ x: i, y: 0 })]!.north = true;
@@ -50,31 +45,45 @@ const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: Ta
         walls[posKey({ x: BOARD_SIZE - 1, y: i })]!.east = true;
     }
 
-    // 3. Random L-shaped walls
+    // Random L-shaped walls
+    const forbiddenForWalls = new Set<string>(centerPositions);
     const wallCount = 12;
-    for(let i=0; i<wallCount; i++){
-        let x, y;
-        do {
-            x = Math.floor(Math.random() * BOARD_SIZE);
-            y = Math.floor(Math.random() * BOARD_SIZE);
-        } while (centerPositions.has(posKey({x,y})) || walls[posKey({x,y})]);
+    let placedWalls = 0;
+    let attempts = 0;
 
-        if (!walls[posKey({x, y})]) walls[posKey({x, y})] = {};
-        const orientation = Math.floor(Math.random() * 4);
-        if(orientation === 0){ // North-West corner -> wall north and west
-            walls[posKey({x, y})]!.north = true;
-            walls[posKey({x, y})]!.west = true;
-        } else if (orientation === 1){ // North-East
-            walls[posKey({x, y})]!.north = true;
-            walls[posKey({x, y})]!.east = true;
-        } else if (orientation === 2){ // South-West
-            walls[posKey({x, y})]!.south = true;
-            walls[posKey({x, y})]!.west = true;
-        } else { // South-East
-            walls[posKey({x, y})]!.south = true;
-            walls[posKey({x, y})]!.east = true;
+    while(placedWalls < wallCount && attempts < 500) {
+        attempts++;
+        const x = Math.floor(Math.random() * (BOARD_SIZE - 2)) + 1; // Avoid edges for simpler logic
+        const y = Math.floor(Math.random() * (BOARD_SIZE - 2)) + 1;
+        const key = posKey({x,y});
+
+        if (!forbiddenForWalls.has(key)) {
+             if (!walls[key]) walls[key] = {};
+            const orientation = Math.floor(Math.random() * 4);
+            if (orientation === 0) { // North-West
+                walls[key]!.north = true;
+                walls[key]!.west = true;
+            } else if (orientation === 1) { // North-East
+                walls[key]!.north = true;
+                walls[key]!.east = true;
+            } else if (orientation === 2) { // South-West
+                walls[key]!.south = true;
+                walls[key]!.west = true;
+            } else { // South-East
+                walls[key]!.south = true;
+                walls[key]!.east = true;
+            }
+
+            // Add the cell and its neighbors to the forbidden list to enforce spacing
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    forbiddenForWalls.add(posKey({ x: x + dx, y: y + dy }));
+                }
+            }
+            placedWalls++;
         }
     }
+
 
     // --- ITEM PLACEMENT ---
     const occupied = new Set<string>();
@@ -104,7 +113,6 @@ const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: Ta
 };
 
 
-// --- GAME COMPONENT ---
 export default function RicochetRobotsPage() {
     const [robots, setRobots] = useState<Robots | null>(null);
     const [walls, setWalls] = useState<Walls | null>(null);
@@ -123,7 +131,7 @@ export default function RicochetRobotsPage() {
 
         while (q.length > 0) {
             iterations++;
-            if (iterations > 5000) return false; // Safety break
+            if (iterations > 1000) return false; // Safety break
 
             const { robots: currentRobots } = q.shift()!;
             
@@ -134,7 +142,7 @@ export default function RicochetRobotsPage() {
             for (const color of ROBOT_COLORS) {
                 const robotPositions = new Set(Object.values(currentRobots).map(posKey));
 
-                // Move North
+                // Move Logically in all 4 directions
                 let y = currentRobots[color].y;
                 while (y > 0 && !walls[posKey({x: currentRobots[color].x, y})]?.north && !robotPositions.has(posKey({x: currentRobots[color].x, y: y-1}))) y--;
                 if(y !== currentRobots[color].y) {
@@ -144,7 +152,6 @@ export default function RicochetRobotsPage() {
                     if(!visited.has(key)) { visited.add(key); q.push({robots: nextRobots}); }
                 }
 
-                // Move South, West, East (similar logic)
                 // South
                 y = currentRobots[color].y;
                 while (y < BOARD_SIZE - 1 && !walls[posKey({x: currentRobots[color].x, y})]?.south && !robotPositions.has(posKey({x: currentRobots[color].x, y: y+1}))) y++;
@@ -304,9 +311,9 @@ export default function RicochetRobotsPage() {
 
     if (loading || !robots || !walls || !target) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
+            <div className="flex items-center justify-center min-h-screen bg-slate-100 text-slate-800">
                 <div className="flex flex-col items-center gap-4">
-                    <Dices className="w-16 h-16 animate-spin" />
+                    <Dices className="w-16 h-16 animate-spin text-slate-500" />
                     <p className="text-xl">Generating a solvable puzzle...</p>
                 </div>
             </div>
@@ -315,15 +322,15 @@ export default function RicochetRobotsPage() {
     
     const possibleMoves = selectedRobot ? calculateMoves(robots[selectedRobot], robots, walls) : [];
     const colorMap = {
-        red: { text: 'text-red-400', border: 'border-red-400', target: 'text-red-500' },
-        blue: { text: 'text-blue-400', border: 'border-blue-400', target: 'text-blue-500' },
-        green: { text: 'text-green-400', border: 'border-green-400', target: 'text-green-500' },
-        yellow: { text: 'text-yellow-400', border: 'border-yellow-400', target: 'text-yellow-500' },
+        red: { text: 'text-red-600', border: 'border-red-600', target: 'text-red-500' },
+        blue: { text: 'text-blue-600', border: 'border-blue-600', target: 'text-blue-500' },
+        green: { text: 'text-green-600', border: 'border-green-600', target: 'text-green-500' },
+        yellow: { text: 'text-yellow-500', border: 'border-yellow-500', target: 'text-yellow-400' },
     };
 
     return (
-        <main className="flex flex-col lg:flex-row items-center justify-center min-h-screen bg-gray-900 p-4 gap-8">
-            <div className="grid grid-cols-16 border-2 border-cyan-400 aspect-square w-full max-w-lg lg:max-w-xl xl:max-w-2xl bg-gray-800">
+        <main className="flex flex-col lg:flex-row items-center justify-center min-h-screen bg-slate-100 p-4 gap-8 text-slate-800">
+            <div className="grid grid-cols-16 border-2 border-slate-400 aspect-square w-full max-w-lg lg:max-w-xl xl:max-w-2xl bg-white shadow-2xl">
                 {Array.from({ length: BOARD_SIZE * BOARD_SIZE }).map((_, i) => {
                     const x = i % BOARD_SIZE;
                     const y = Math.floor(i / BOARD_SIZE);
@@ -332,11 +339,11 @@ export default function RicochetRobotsPage() {
                     const isTarget = target.x === x && target.y === y;
                     const isMoveTarget = possibleMoves.some(p => p.x === x && p.y === y);
 
-                    let wallClasses = 'border-cyan-600/20';
-                    if (wall?.north) wallClasses += ' border-t-2';
-                    if (wall?.south) wallClasses += ' border-b-2';
-                    if (wall?.west) wallClasses += ' border-l-2';
-                    if (wall?.east) wallClasses += ' border-r-2';
+                    let wallClasses = 'border border-slate-200'; // Grid lines
+                    if (wall?.north) wallClasses += ' border-t-slate-800 border-t-2';
+                    if (wall?.south) wallClasses += ' border-b-slate-800 border-b-2';
+                    if (wall?.west) wallClasses += ' border-l-slate-800 border-l-2';
+                    if (wall?.east) wallClasses += ' border-r-slate-800 border-r-2';
 
                     return (
                         <div
@@ -352,15 +359,15 @@ export default function RicochetRobotsPage() {
                                     strokeWidth={1.5}
                                 />
                             )}
-                            {isMoveTarget && <div className="absolute w-1/3 h-1/3 bg-yellow-400/50 rounded-full cursor-pointer animate-pulse"></div>}
+                            {isMoveTarget && <div className="absolute w-1/3 h-1/3 bg-yellow-400/70 rounded-full cursor-pointer animate-pulse"></div>}
                         </div>
                     );
                 })}
             </div>
 
-            <div className="w-full lg:w-80 flex flex-col gap-4 text-white">
-                 <h1 className="text-4xl font-bold text-cyan-300">Ricochet Robots</h1>
-                <div className="p-4 bg-gray-800 rounded-lg shadow-lg">
+            <div className="w-full lg:w-80 flex flex-col gap-4">
+                 <h1 className="text-4xl font-bold text-slate-700">Ricochet Robots</h1>
+                <div className="p-4 bg-white rounded-lg shadow-lg border">
                     <h2 className="text-xl font-semibold mb-2">Target</h2>
                     <div className="flex items-center gap-2">
                         <Target className={`w-8 h-8 ${colorMap[target.color].target}`} />
@@ -369,23 +376,23 @@ export default function RicochetRobotsPage() {
                     </div>
                 </div>
 
-                <div className="p-4 bg-gray-800 rounded-lg shadow-lg">
+                <div className="p-4 bg-white rounded-lg shadow-lg border">
                     <h2 className="text-xl font-semibold mb-2">Game Info</h2>
-                    <p className="text-lg">Moves: <span className="font-bold text-cyan-300">{moveCount}</span></p>
-                    {optimalMoves && <p className="text-lg">Optimal: <span className="font-bold text-cyan-300">{optimalMoves.length}</span></p>}
-                    {solved && <p className="text-2xl font-bold text-green-400 mt-2 animate-pulse">Puzzle Solved!</p>}
+                    <p className="text-lg">Moves: <span className="font-bold text-slate-600">{moveCount}</span></p>
+                    {optimalMoves && <p className="text-lg">Optimal: <span className="font-bold text-slate-600">{optimalMoves.length}</span></p>}
+                    {solved && <p className="text-2xl font-bold text-green-600 mt-2 animate-pulse">Puzzle Solved!</p>}
                 </div>
                 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 text-white">
                     <button onClick={resetRound} className="p-2 bg-blue-600 rounded-lg flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"><RotateCcw size={20}/> Reset</button>
                     <button onClick={setupNewGame} className="p-2 bg-green-600 rounded-lg flex items-center justify-center gap-2 hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-400"><Dices size={20}/> New Game</button>
                 </div>
-                 <button onClick={solve} disabled={!!optimalMoves} className="p-2 bg-purple-600 rounded-lg flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-purple-400">
+                 <button onClick={solve} disabled={!!optimalMoves} className="p-2 bg-purple-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-purple-400">
                     <ArrowRight size={20}/> Show Optimal Solution
                  </button>
 
                  {optimalMoves && (
-                    <div className="p-4 bg-gray-800 rounded-lg max-h-48 overflow-y-auto">
+                    <div className="p-4 bg-white rounded-lg border max-h-48 overflow-y-auto">
                         <h3 className="font-semibold mb-2">Optimal Path:</h3>
                         <ol className="list-decimal list-inside text-sm space-y-1">
                             {optimalMoves.map((move, i) => <li key={i} className="truncate">{move}</li>)}
