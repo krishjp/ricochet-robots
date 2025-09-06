@@ -15,6 +15,7 @@ export const styles = {
 
     // Board
     boardContainer: "grid grid-cols-16 border-2 border-slate-400 aspect-square w-full max-w-lg lg:max-w-xl xl:max-w-2xl bg-white shadow-2xl",
+    // Cell style is simplified; borders are now handled dynamically in the component.
     cell: "aspect-square flex items-center justify-center relative",
     
     // Game Pieces

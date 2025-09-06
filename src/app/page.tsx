@@ -12,12 +12,13 @@ type Robot = Position & { color: RobotColor };
 type Robots = { [key in RobotColor]: Robot };
 type Walls = { [key: string]: { north?: boolean; east?: boolean; south?: boolean; west?: boolean } };
 type TargetChip = Position & { color: RobotColor };
-type OptimalPathStep = { text: string; pos: Position };
+type OptimalPathStep = { color: RobotColor, pos: Position };
 
+// --- HELPER & CORE LOGIC FUNCTIONS ---
 const posKey = (p: Position) => `${p.x},${p.y}`;
 
 const moveLogic = (x: number, y: number, direction: 'north' | 'south' | 'east' | 'west', currentRobots: Robots, walls: Walls): Position | null => {
-    const robotPositions = new Set(Object.values(currentRobots).map(posKey));
+    const robotPositions = new Set(Object.values(currentRobots).map(p => posKey(p)));
     let newPos = { x, y };
 
     if (direction === 'north') {
@@ -189,18 +190,16 @@ export default function RicochetRobotsPage() {
     const [target, setTarget] = useState<TargetChip | null>(null);
     const [selectedRobot, setSelectedRobot] = useState<RobotColor | null>(null);
     const [moveCount, setMoveCount] = useState(0);
-    const [optimalMoves, setOptimalMoves] = useState<string[] | null>(null);
-    const [optimalPathCoords, setOptimalPathCoords] = useState<Position[] | null>(null);
     const [initialState, setInitialState] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [solved, setSolved] = useState(false);
+    const [isAnimating, setIsAnimating] = useState(false);
 
     const setupNewGame = useCallback(() => {
         setLoading(true);
         setSelectedRobot(null);
-        setOptimalMoves(null);
-        setOptimalPathCoords(null);
         setSolved(false);
+        setIsAnimating(false);
 
         const generate = () => {
             const { robots, walls, target } = generateInitialBoardState();
@@ -223,7 +222,7 @@ export default function RicochetRobotsPage() {
     }, [setupNewGame]);
     
     const handleCellClick = (x: number, y: number) => {
-       if (solved) return;
+       if (solved || isAnimating) return;
         const robotColor = ROBOT_COLORS.find(c => robots![c].x === x && robots![c].y === y);
         if (robotColor) {
             setSelectedRobot(robotColor);
@@ -231,7 +230,7 @@ export default function RicochetRobotsPage() {
     };
 
     const handleMove = (pos: Position) => {
-        if (!selectedRobot || !robots || !target) return;
+        if (!selectedRobot || !robots || !target || isAnimating) return;
         setRobots(prev => {
             const newRobots = { ...prev! };
             newRobots[selectedRobot] = { ...newRobots[selectedRobot], ...pos };
@@ -245,20 +244,48 @@ export default function RicochetRobotsPage() {
         setMoveCount(prev => prev + 1);
         setSelectedRobot(null);
     };
+    
+    const animateSolution = useCallback((steps: OptimalPathStep[]) => {
+        if (!steps || steps.length === 0) return;
+        
+        setIsAnimating(true);
+        setRobots(JSON.parse(initialState!));
+        setMoveCount(0);
+        setSelectedRobot(null);
+        setSolved(false);
 
+        let stepIndex = 0;
+        const interval = setInterval(() => {
+            if (stepIndex >= steps.length) {
+                clearInterval(interval);
+                setIsAnimating(false);
+                setSolved(true);
+                return;
+            }
+
+            const move = steps[stepIndex];
+            setRobots(prev => {
+                const newRobots = { ...prev! };
+                newRobots[move.color] = { ...newRobots[move.color], ...move.pos };
+                return newRobots;
+            });
+            setMoveCount(prev => prev + 1);
+            stepIndex++;
+        }, 600);
+    }, [initialState]);
+    
     const solve = useCallback(() => {
         if (!initialState || !walls || !target) return;
         
         const startRobots: Robots = JSON.parse(initialState);
         const q: { robots: Robots; path: OptimalPathStep[] }[] = [{ robots: startRobots, path: [] }];
-        const visited = new Set<string>([JSON.stringify(Object.values(startRobots).map((p: Robot) => posKey(p)).sort())]);
+        const visited = new Set<string>([JSON.stringify(Object.values(startRobots).map(p => posKey(p)).sort())]);
         
         while (q.length > 0) {
             const { robots: currentRobots, path } = q.shift()!;
             
             if (currentRobots[target.color].x === target.x && currentRobots[target.color].y === target.y) {
-                setOptimalMoves(path.map(p => p.text));
-                setOptimalPathCoords(path.map(p => p.pos));
+                animateSolution(path);
                 return;
             }
 
@@ -271,26 +298,23 @@ export default function RicochetRobotsPage() {
                     newRobots[color].x = move.x;
                     newRobots[color].y = move.y;
                     
-                    const stateKey = JSON.stringify(Object.values(newRobots).map((p: Robot) => posKey(p)).sort());
+                    const stateKey = JSON.stringify(Object.values(newRobots).map(p => posKey(p)).sort());
 
                     if (!visited.has(stateKey)) {
                         visited.add(stateKey);
-                        const newPath = [...path, { text: `${color} to ${move.x},${move.y}`, pos: move }];
+                        const newPath = [...path, { color: color, pos: move }];
                         q.push({ robots: newRobots, path: newPath });
                     }
                 }
             }
         }
-        setOptimalMoves(["Could not find a solution in a reasonable time."]);
-    }, [initialState, walls, target]);
+    }, [initialState, walls, target, animateSolution]);
     
     const resetRound = () => {
-        if (!initialState) return;
+        if (!initialState || isAnimating) return;
         setRobots(JSON.parse(initialState));
         setMoveCount(0);
         setSelectedRobot(null);
-        setOptimalMoves(null);
-        setOptimalPathCoords(null);
         setSolved(false);
     };
 
@@ -317,7 +341,6 @@ export default function RicochetRobotsPage() {
                     const robot = Object.values(robots).find(r => r.x === x && r.y === y);
                     const isTarget = target.x === x && target.y === y;
                     const isMoveTarget = possibleMoves.some(p => p.x === x && p.y === y);
-                    const optimalMoveStep = optimalPathCoords?.findIndex(p => p.x === x && p.y === y);
 
                     let cellClasses = 'border-2 border-transparent';
                     cellClasses += ' border-b-slate-200 border-r-slate-200';
@@ -343,13 +366,6 @@ export default function RicochetRobotsPage() {
                                 />
                             )}
                             {isMoveTarget && <div className={styles.moveIndicator}></div>}
-                            {optimalMoveStep !== undefined && optimalMoveStep > -1 && (
-                                <div className={styles.optimalStepContainer}>
-                                    <div className={styles.optimalStepBubble}>
-                                        {optimalMoveStep + 1}
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     );
                 })}
@@ -369,27 +385,18 @@ export default function RicochetRobotsPage() {
                 <div className={styles.panelCard}>
                     <h2 className={styles.panelTitle}>Game Info</h2>
                     <p className="text-lg">Moves: <span className="font-bold text-slate-600">{moveCount}</span></p>
-                    {optimalMoves && <p className="text-lg">Optimal: <span className="font-bold text-slate-600">{optimalMoves.length}</span></p>}
-                    {solved && <p className="text-2xl font-bold text-green-600 mt-2 animate-pulse">Puzzle Solved!</p>}
+                    {solved && !isAnimating && <p className="text-2xl font-bold text-green-600 mt-2 animate-pulse">Puzzle Solved!</p>}
                 </div>
                 
                 <div className="grid grid-cols-2 gap-2">
-                    <button onClick={resetRound} className={`${styles.buttonBase} ${styles.buttonBlue}`}><RotateCcw size={20}/> Reset</button>
-                    <button onClick={setupNewGame} className={`${styles.buttonBase} ${styles.buttonGreen}`}><Dices size={20}/> New Game</button>
+                    <button onClick={resetRound} disabled={isAnimating} className={`${styles.buttonBase} ${styles.buttonBlue}`}><RotateCcw size={20}/> Reset</button>
+                    <button onClick={setupNewGame} disabled={isAnimating} className={`${styles.buttonBase} ${styles.buttonGreen}`}><Dices size={20}/> New Game</button>
                 </div>
-                 <button onClick={solve} disabled={!!optimalMoves} className={`${styles.buttonBase} ${styles.buttonPurple}`}>
+                 <button onClick={solve} disabled={isAnimating} className={`${styles.buttonBase} ${styles.buttonPurple}`}>
                     <ArrowRight size={20}/> Show Optimal Solution
                  </button>
-
-                 {optimalMoves && (
-                    <div className={`${styles.panelCard} max-h-48 overflow-y-auto`}>
-                        <h3 className="font-semibold mb-2">Optimal Path:</h3>
-                        <ol className="list-decimal list-inside text-sm space-y-1">
-                            {optimalMoves.map((move, i) => <li key={i} className="truncate">{move}</li>)}
-                        </ol>
-                    </div>
-                 )}
             </div>
         </main>
     );
 }
+
