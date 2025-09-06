@@ -1,5 +1,7 @@
 // A centralized file for all Tailwind CSS class strings used in the game.
 
+export const ANIMATION_SPEED_MS = 550;
+
 export const colors = {
     red: { text: 'text-red-600', border: 'border-red-600', target: 'text-red-500' },
     blue: { text: 'text-blue-600', border: 'border-blue-600', target: 'text-blue-500' },
@@ -15,18 +17,14 @@ export const styles = {
 
     // Board
     boardContainer: "grid grid-cols-16 border-2 border-slate-400 aspect-square w-full max-w-lg lg:max-w-xl xl:max-w-2xl bg-white shadow-2xl",
-    // Cell style is simplified; borders are now handled dynamically in the component.
     cell: "aspect-square flex items-center justify-center relative",
     
     // Game Pieces
-    robot: (color: keyof typeof colors, isSelected: boolean) => 
-        `w-full h-full p-0.5 transition-transform duration-200 ${colors[color].text} ${isSelected ? `scale-110 -translate-y-1 border-2 ${colors[color].border} rounded-full` : ''}`,
+    robotContainer: "absolute transition-all ease-in-out duration-200",
+    robotIcon: (color: keyof typeof colors, isSelected: boolean) => 
+        `w-full h-full transition-transform duration-200 ${colors[color].text} ${isSelected ? 'scale-110' : ''}`,
     target: (color: keyof typeof colors) => `w-3/4 h-3/4 ${colors[color].target}`,
     moveIndicator: "absolute w-1/3 h-1/3 bg-yellow-400/70 rounded-full cursor-pointer animate-pulse",
-
-    // Optimal Path Number Display
-    optimalStepContainer: "absolute inset-0 flex items-start justify-start pointer-events-none z-10",
-    optimalStepBubble: "flex items-center justify-center w-2/5 h-2/5 aspect-square bg-black/75 text-white text-xs font-bold rounded-full ring-2 ring-white transform -translate-x+3/2 -translate-y+3/2",
 
     // UI Panel
     panelContainer: "w-full lg:w-80 flex flex-col gap-4",
@@ -39,4 +37,3 @@ export const styles = {
     buttonGreen: "bg-green-600 text-white hover:bg-green-700 focus:ring-2 focus:ring-green-400",
     buttonPurple: "bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed focus:ring-2 focus:ring-purple-400",
 };
-

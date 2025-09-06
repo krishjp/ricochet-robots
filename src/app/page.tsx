@@ -1,9 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { Target, Bot, RotateCcw, RefreshCw, Dices, ArrowRight } from 'lucide-react';
-import { styles, colors } from '../styles/ricochet-styles';
+import { styles, colors, ANIMATION_SPEED_MS } from '../styles/ricochet-styles';
 
-// --- TYPES AND CONSTANTS ---
 const BOARD_SIZE = 16;
 const ROBOT_COLORS = ["red", "blue", "green", "yellow"] as const;
 type RobotColor = typeof ROBOT_COLORS[number];
@@ -14,7 +13,6 @@ type Walls = { [key: string]: { north?: boolean; east?: boolean; south?: boolean
 type TargetChip = Position & { color: RobotColor };
 type OptimalPathStep = { color: RobotColor, pos: Position };
 
-// --- HELPER & CORE LOGIC FUNCTIONS ---
 const posKey = (p: Position) => `${p.x},${p.y}`;
 
 const moveLogic = (x: number, y: number, direction: 'north' | 'south' | 'east' | 'west', currentRobots: Robots, walls: Walls): Position | null => {
@@ -183,7 +181,6 @@ const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: Ta
     return { robots, walls, target };
 };
 
-// --- GAME COMPONENT ---
 export default function RicochetRobotsPage() {
     const [robots, setRobots] = useState<Robots | null>(null);
     const [walls, setWalls] = useState<Walls | null>(null);
@@ -237,12 +234,13 @@ export default function RicochetRobotsPage() {
             
             if (newRobots[target.color]!.x === target.x && newRobots[target.color]!.y === target.y) {
                 setSolved(true);
+                setSelectedRobot(null);
+
             }
 
             return newRobots;
         });
         setMoveCount(prev => prev + 1);
-        setSelectedRobot(null);
     };
     
     const animateSolution = useCallback((steps: OptimalPathStep[]) => {
@@ -271,7 +269,7 @@ export default function RicochetRobotsPage() {
             });
             setMoveCount(prev => prev + 1);
             stepIndex++;
-        }, 600);
+        }, ANIMATION_SPEED_MS + 50); // Add a small buffer to the animation speed
     }, [initialState]);
     
     const solve = useCallback(() => {
@@ -318,6 +316,12 @@ export default function RicochetRobotsPage() {
         setSolved(false);
     };
 
+    const handleBackgroundClick = (e: React.MouseEvent<HTMLElement>) => {
+        if (e.target === e.currentTarget) {
+            setSelectedRobot(null);
+        }
+    };
+
     if (loading || !robots || !walls || !target) {
         return (
             <div className={styles.loadingContainer}>
@@ -332,43 +336,78 @@ export default function RicochetRobotsPage() {
     const possibleMoves = selectedRobot ? calculateMoves(robots[selectedRobot], robots, walls) : [];
     
     return (
-        <main className={styles.mainContainer}>
-            <div className={styles.boardContainer}>
-                {Array.from({ length: BOARD_SIZE * BOARD_SIZE }).map((_, i) => {
-                    const x = i % BOARD_SIZE;
-                    const y = Math.floor(i / BOARD_SIZE);
-                    const wall = walls[posKey({ x, y })];
-                    const robot = Object.values(robots).find(r => r.x === x && r.y === y);
-                    const isTarget = target.x === x && target.y === y;
-                    const isMoveTarget = possibleMoves.some(p => p.x === x && p.y === y);
+        <main className={styles.mainContainer} onClick={handleBackgroundClick}>
+            <div className="relative w-full max-w-lg lg:max-w-xl xl:max-w-2xl aspect-square">
+                <div className={styles.boardContainer}>
+                    {Array.from({ length: BOARD_SIZE * BOARD_SIZE }).map((_, i) => {
+                        const x = i % BOARD_SIZE;
+                        const y = Math.floor(i / BOARD_SIZE);
+                        const wall = walls[posKey({ x, y })];
+                        const isTarget = target.x === x && target.y === y;
+                        const isMoveTarget = possibleMoves.some(p => p.x === x && p.y === y);
 
-                    let cellClasses = 'border-2 border-transparent';
-                    cellClasses += ' border-b-slate-200 border-r-slate-200';
-                    if (x === 0) cellClasses += ' border-l-slate-200';
-                    if (y === 0) cellClasses += ' border-t-slate-200';
-                    if (wall?.north) cellClasses += ' !border-t-slate-800';
-                    if (wall?.south) cellClasses += ' !border-b-slate-800';
-                    if (wall?.west) cellClasses += ' !border-l-slate-800';
-                    if (wall?.east) cellClasses += ' !border-r-slate-800';
+                        let cellClasses = 'border-2 border-transparent';
+                        cellClasses += ' border-b-slate-200 border-r-slate-200';
+                        if (x === 0) cellClasses += ' border-l-slate-200';
+                        if (y === 0) cellClasses += ' border-t-slate-200';
+                        if (wall?.north) cellClasses += ' !border-t-slate-800';
+                        if (wall?.south) cellClasses += ' !border-b-slate-800';
+                        if (wall?.west) cellClasses += ' !border-l-slate-800';
+                        if (wall?.east) cellClasses += ' !border-r-slate-800';
 
-                    return (
-                        <div
-                            key={i}
-                            className={`${styles.cell} ${cellClasses}`}
-                            style={{gridColumn: x + 1, gridRow: y + 1}}
-                            onClick={() => isMoveTarget ? handleMove({x,y}) : handleCellClick(x,y)}
-                        >
-                            {isTarget && <Target className={styles.target(target.color)} strokeWidth={1.5} />}
-                            {robot && (
-                                <Bot
-                                    className={styles.robot(robot.color, selectedRobot === robot.color)}
-                                    strokeWidth={1.5}
-                                />
-                            )}
-                            {isMoveTarget && <div className={styles.moveIndicator}></div>}
-                        </div>
-                    );
-                })}
+                        return (
+                            <div
+                                key={`cell-${i}`}
+                                className={`${styles.cell} ${cellClasses}`}
+                                style={{gridColumn: x + 1, gridRow: y + 1}}
+                                onClick={() => isMoveTarget ? handleMove({x,y}) : handleCellClick(x,y)}
+                            >
+                                {isTarget && <Target className={styles.target(target.color)} strokeWidth={1.5} />}
+                                {isMoveTarget && <div className={styles.moveIndicator}></div>}
+                            </div>
+                        );
+                    })}
+                </div>
+                {/* Robots are now rendered in an overlay to allow smooth transitions across the grid */}
+                <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
+                     {Object.values(robots).map(robot => {
+                        const isSelected = selectedRobot === robot.color;
+                        const robotWall = walls[posKey(robot)];
+                        
+                        const baseInset = '10%'; 
+                        const wallInset = '12%'; 
+                        
+                        const robotContainerStyle = {
+                            top: robotWall?.north ? wallInset : baseInset,
+                            bottom: robotWall?.south ? wallInset : baseInset,
+                            left: robotWall?.west ? wallInset : baseInset,
+                            right: robotWall?.east ? wallInset : baseInset,
+                        };
+
+                        return (
+                            <div
+                                key={robot.color}
+                                className="absolute w-[6.25%] h-[6.25%]" // 100% / 16 cells = 6.25%
+                                style={{
+                                    transform: `translate(${robot.x * 100}%, ${robot.y * 100}%)`,
+                                    transition: `transform ${ANIMATION_SPEED_MS}ms cubic-bezier(0.4, 0.2, 0, 1)`,
+                                }}
+                            >
+                                <div
+                                    className={styles.robotContainer}
+                                    style={robotContainerStyle}
+                                >
+                                    <Bot
+                                        className={styles.robotIcon(robot.color, isSelected)}
+                                        strokeWidth={1.5}
+                                        onClick={() => handleCellClick(robot.x, robot.y)}
+                                        style={{ pointerEvents: 'auto' }}
+                                    />
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
 
             <div className={styles.panelContainer}>
@@ -378,7 +417,7 @@ export default function RicochetRobotsPage() {
                     <div className="flex items-center gap-2">
                         <Target className={`w-8 h-8 ${colors[target.color].target}`} />
                         <Bot className={`w-8 h-8 ${colors[target.color].text}`} />
-                         <span className='capitalize text-lg font-medium'>{target.color} Robot</span>
+                        <span className='capitalize text-lg font-medium'>{target.color} Robot</span>
                     </div>
                 </div>
 
@@ -399,4 +438,3 @@ export default function RicochetRobotsPage() {
         </main>
     );
 }
-
