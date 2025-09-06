@@ -1,7 +1,9 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { Target, Bot, RotateCcw, RefreshCw, Dices, ArrowRight } from 'lucide-react';
+import { styles, colors } from '../styles/ricochet-styles';
 
+// --- TYPES AND CONSTANTS ---
 const BOARD_SIZE = 16;
 const ROBOT_COLORS = ["red", "blue", "green", "yellow"] as const;
 type RobotColor = typeof ROBOT_COLORS[number];
@@ -111,10 +113,7 @@ const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: Ta
     }
 
     const forbiddenForWalls = new Set<string>(centerPositions);
-
-    // Forbid the 3x3 area around the center
     const centerStart = center - 1;
-
     for (let i = centerStart; i < centerStart + 3; i++) {
         for (let j = centerStart; j < centerStart + 3; j++) {
             forbiddenForWalls.add(posKey({x: i, y: j}));
@@ -124,14 +123,11 @@ const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: Ta
     const wallCount = 20;
     let placedWalls = 0;
     let attempts = 0;
-
     while(placedWalls < wallCount && attempts < 1000) {
         attempts++;
         const x = Math.floor(Math.random() * BOARD_SIZE);
         const y = Math.floor(Math.random() * BOARD_SIZE);
-        const key = posKey({x,y});
-
-        // target or surrounding forbidden check
+        
         let isSpaceClear = true;
         for (let dx = -1; dx <= 1; dx++) {
             for (let dy = -1; dy <= 1; dy++) {
@@ -144,12 +140,14 @@ const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: Ta
         }
         
         if (isSpaceClear) {
+            const key = posKey({x,y});
             if (!walls[key]) walls[key] = {};
             const orientation = Math.floor(Math.random() * 4);
             if (orientation === 0) { walls[key]!.north = true; walls[key]!.west = true; }
             else if (orientation === 1) { walls[key]!.north = true; walls[key]!.east = true; }
             else if (orientation === 2) { walls[key]!.south = true; walls[key]!.west = true; }
             else { walls[key]!.south = true; walls[key]!.east = true; }
+
             for (let dx = -1; dx <= 1; dx++) {
                 for (let dy = -1; dy <= 1; dy++) {
                     forbiddenForWalls.add(posKey({ x: x + dx, y: y + dy }));
@@ -184,7 +182,7 @@ const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: Ta
     return { robots, walls, target };
 };
 
-
+// --- GAME COMPONENT ---
 export default function RicochetRobotsPage() {
     const [robots, setRobots] = useState<Robots | null>(null);
     const [walls, setWalls] = useState<Walls | null>(null);
@@ -298,9 +296,9 @@ export default function RicochetRobotsPage() {
 
     if (loading || !robots || !walls || !target) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-slate-100 text-slate-800">
+            <div className={styles.loadingContainer}>
                 <div className="flex flex-col items-center gap-4">
-                    <Dices className="w-16 h-16 animate-spin text-slate-500" />
+                    <Dices className={styles.loadingSpinner} />
                     <p className="text-xl">Generating a solvable puzzle...</p>
                 </div>
             </div>
@@ -308,16 +306,10 @@ export default function RicochetRobotsPage() {
     }
     
     const possibleMoves = selectedRobot ? calculateMoves(robots[selectedRobot], robots, walls) : [];
-    const colorMap = {
-        red: { text: 'text-red-600', border: 'border-red-600', target: 'text-red-500' },
-        blue: { text: 'text-blue-600', border: 'border-blue-600', target: 'text-blue-500' },
-        green: { text: 'text-green-600', border: 'border-green-600', target: 'text-green-500' },
-        yellow: { text: 'text-yellow-500', border: 'border-yellow-500', target: 'text-yellow-400' },
-    };
-
+    
     return (
-        <main className="flex flex-col lg:flex-row items-center justify-center min-h-screen bg-slate-100 p-4 gap-8 text-slate-800">
-            <div className="grid grid-cols-16 border-2 border-slate-400 aspect-square w-full max-w-lg lg:max-w-xl xl:max-w-2xl bg-white shadow-2xl">
+        <main className={styles.mainContainer}>
+            <div className={styles.boardContainer}>
                 {Array.from({ length: BOARD_SIZE * BOARD_SIZE }).map((_, i) => {
                     const x = i % BOARD_SIZE;
                     const y = Math.floor(i / BOARD_SIZE);
@@ -327,31 +319,33 @@ export default function RicochetRobotsPage() {
                     const isMoveTarget = possibleMoves.some(p => p.x === x && p.y === y);
                     const optimalMoveStep = optimalPathCoords?.findIndex(p => p.x === x && p.y === y);
 
-
-                    let wallClasses = 'border border-slate-200';
-                    if (wall?.north) wallClasses += ' border-t-slate-800 border-t-2';
-                    if (wall?.south) wallClasses += ' border-b-slate-800 border-b-2';
-                    if (wall?.west) wallClasses += ' border-l-slate-800 border-l-2';
-                    if (wall?.east) wallClasses += ' border-r-slate-800 border-r-2';
+                    let cellClasses = 'border-2 border-transparent';
+                    cellClasses += ' border-b-slate-200 border-r-slate-200';
+                    if (x === 0) cellClasses += ' border-l-slate-200';
+                    if (y === 0) cellClasses += ' border-t-slate-200';
+                    if (wall?.north) cellClasses += ' !border-t-slate-800';
+                    if (wall?.south) cellClasses += ' !border-b-slate-800';
+                    if (wall?.west) cellClasses += ' !border-l-slate-800';
+                    if (wall?.east) cellClasses += ' !border-r-slate-800';
 
                     return (
                         <div
                             key={i}
-                            className={`aspect-square flex items-center justify-center relative ${wallClasses}`}
+                            className={`${styles.cell} ${cellClasses}`}
                             style={{gridColumn: x + 1, gridRow: y + 1}}
                             onClick={() => isMoveTarget ? handleMove({x,y}) : handleCellClick(x,y)}
                         >
-                            {isTarget && <Target className={`w-3/4 h-3/4 ${colorMap[target.color].target}`} strokeWidth={1.5} />}
+                            {isTarget && <Target className={styles.target(target.color)} strokeWidth={1.5} />}
                             {robot && (
                                 <Bot
-                                    className={`w-full h-full p-0.5 transition-transform duration-200 ${colorMap[robot.color].text} ${selectedRobot === robot.color ? `scale-110 -translate-y-1 border-2 ${colorMap[robot.color].border} rounded-full` : ''}`}
+                                    className={styles.robot(robot.color, selectedRobot === robot.color)}
                                     strokeWidth={1.5}
                                 />
                             )}
-                            {isMoveTarget && <div className="absolute w-1/3 h-1/3 bg-yellow-400/70 rounded-full cursor-pointer animate-pulse"></div>}
+                            {isMoveTarget && <div className={styles.moveIndicator}></div>}
                             {optimalMoveStep !== undefined && optimalMoveStep > -1 && (
-                                <div className="absolute inset-0 flex items-start justify-start pointer-events-none z-10">
-                                    <div className="flex items-center justify-center w-2/5 h-2/5 aspect-square bg-black/75 text-white text-xs font-bold rounded-full ring-2 ring-white transform -translate-x+3/2 -translate-y+3/2">
+                                <div className={styles.optimalStepContainer}>
+                                    <div className={styles.optimalStepBubble}>
                                         {optimalMoveStep + 1}
                                     </div>
                                 </div>
@@ -361,34 +355,34 @@ export default function RicochetRobotsPage() {
                 })}
             </div>
 
-            <div className="w-full lg:w-80 flex flex-col gap-4">
+            <div className={styles.panelContainer}>
                  <h1 className="text-4xl font-bold text-slate-700">Ricochet Robots</h1>
-                <div className="p-4 bg-white rounded-lg shadow-lg border">
-                    <h2 className="text-xl font-semibold mb-2">Target</h2>
+                <div className={styles.panelCard}>
+                    <h2 className={styles.panelTitle}>Target</h2>
                     <div className="flex items-center gap-2">
-                        <Target className={`w-8 h-8 ${colorMap[target.color].target}`} />
-                        <Bot className={`w-8 h-8 ${colorMap[target.color].text}`} />
+                        <Target className={`w-8 h-8 ${colors[target.color].target}`} />
+                        <Bot className={`w-8 h-8 ${colors[target.color].text}`} />
                          <span className='capitalize text-lg font-medium'>{target.color} Robot</span>
                     </div>
                 </div>
 
-                <div className="p-4 bg-white rounded-lg shadow-lg border">
-                    <h2 className="text-xl font-semibold mb-2">Game Info</h2>
+                <div className={styles.panelCard}>
+                    <h2 className={styles.panelTitle}>Game Info</h2>
                     <p className="text-lg">Moves: <span className="font-bold text-slate-600">{moveCount}</span></p>
                     {optimalMoves && <p className="text-lg">Optimal: <span className="font-bold text-slate-600">{optimalMoves.length}</span></p>}
                     {solved && <p className="text-2xl font-bold text-green-600 mt-2 animate-pulse">Puzzle Solved!</p>}
                 </div>
                 
-                <div className="grid grid-cols-2 gap-2 text-white">
-                    <button onClick={resetRound} className="p-2 bg-blue-600 rounded-lg flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"><RotateCcw size={20}/> Reset</button>
-                    <button onClick={setupNewGame} className="p-2 bg-green-600 rounded-lg flex items-center justify-center gap-2 hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-400"><Dices size={20}/> New Game</button>
+                <div className="grid grid-cols-2 gap-2">
+                    <button onClick={resetRound} className={`${styles.buttonBase} ${styles.buttonBlue}`}><RotateCcw size={20}/> Reset</button>
+                    <button onClick={setupNewGame} className={`${styles.buttonBase} ${styles.buttonGreen}`}><Dices size={20}/> New Game</button>
                 </div>
-                 <button onClick={solve} disabled={!!optimalMoves} className="p-2 bg-purple-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-purple-400">
+                 <button onClick={solve} disabled={!!optimalMoves} className={`${styles.buttonBase} ${styles.buttonPurple}`}>
                     <ArrowRight size={20}/> Show Optimal Solution
                  </button>
 
                  {optimalMoves && (
-                    <div className="p-4 bg-white rounded-lg border max-h-48 overflow-y-auto">
+                    <div className={`${styles.panelCard} max-h-48 overflow-y-auto`}>
                         <h3 className="font-semibold mb-2">Optimal Path:</h3>
                         <ol className="list-decimal list-inside text-sm space-y-1">
                             {optimalMoves.map((move, i) => <li key={i} className="truncate">{move}</li>)}
@@ -399,4 +393,3 @@ export default function RicochetRobotsPage() {
         </main>
     );
 }
-
