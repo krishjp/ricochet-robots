@@ -12,34 +12,22 @@ type Robots = { [key in RobotColor]: Robot };
 type Walls = { [key: string]: { north?: boolean; east?: boolean; south?: boolean; west?: boolean } };
 type TargetChip = Position & { color: RobotColor };
 type OptimalPathStep = { color: RobotColor, pos: Position };
-
 const posKey = (p: Position) => `${p.x},${p.y}`;
 
 const moveLogic = (x: number, y: number, direction: 'north' | 'south' | 'east' | 'west', currentRobots: Robots, walls: Walls): Position | null => {
     const robotPositions = new Set(Object.values(currentRobots).map(p => posKey(p)));
     let newPos = { x, y };
-
     if (direction === 'north') {
-        while (newPos.y > 0 && !walls[posKey(newPos)]?.north && !walls[posKey({x: newPos.x, y: newPos.y - 1})]?.south && !robotPositions.has(posKey({x: newPos.x, y: newPos.y - 1}))) {
-            newPos.y--;
-        }
+        while (newPos.y > 0 && !walls[posKey(newPos)]?.north && !walls[posKey({x: newPos.x, y: newPos.y - 1})]?.south && !robotPositions.has(posKey({x: newPos.x, y: newPos.y - 1}))) newPos.y--;
     } else if (direction === 'south') {
-        while (newPos.y < BOARD_SIZE - 1 && !walls[posKey(newPos)]?.south && !walls[posKey({x: newPos.x, y: newPos.y + 1})]?.north && !robotPositions.has(posKey({x: newPos.x, y: newPos.y + 1}))) {
-            newPos.y++;
-        }
+        while (newPos.y < BOARD_SIZE - 1 && !walls[posKey(newPos)]?.south && !walls[posKey({x: newPos.x, y: newPos.y + 1})]?.north && !robotPositions.has(posKey({x: newPos.x, y: newPos.y + 1}))) newPos.y++;
     } else if (direction === 'west') {
-        while (newPos.x > 0 && !walls[posKey(newPos)]?.west && !walls[posKey({x: newPos.x - 1, y: newPos.y})]?.east && !robotPositions.has(posKey({x: newPos.x - 1, y: newPos.y}))) {
-            newPos.x--;
-        }
+        while (newPos.x > 0 && !walls[posKey(newPos)]?.west && !walls[posKey({x: newPos.x - 1, y: newPos.y})]?.east && !robotPositions.has(posKey({x: newPos.x - 1, y: newPos.y}))) newPos.x--;
     } else if (direction === 'east') {
-        while (newPos.x < BOARD_SIZE - 1 && !walls[posKey(newPos)]?.east && !walls[posKey({x: newPos.x + 1, y: newPos.y})]?.west && !robotPositions.has(posKey({x: newPos.x + 1, y: newPos.y}))) {
-            newPos.x++;
-        }
+        while (newPos.x < BOARD_SIZE - 1 && !walls[posKey(newPos)]?.east && !walls[posKey({x: newPos.x + 1, y: newPos.y})]?.west && !robotPositions.has(posKey({x: newPos.x + 1, y: newPos.y}))) newPos.x++;
     }
-    
     return (newPos.x !== x || newPos.y !== y) ? newPos : null;
 };
-
 const calculateMoves = (robot: Robot, currentRobots: Robots, walls: Walls): Position[] => {
     const moves: Position[] = [];
     const directions: ('north' | 'south' | 'east' | 'west')[] = ['north', 'south', 'east', 'west'];
@@ -50,38 +38,70 @@ const calculateMoves = (robot: Robot, currentRobots: Robots, walls: Walls): Posi
     return moves;
 };
 
-const isReachable = (startRobots: Robots, walls: Walls, target: TargetChip): boolean => {
-    const q: {robots: Robots}[] = [{robots: startRobots}];
-    const visited = new Set<string>([JSON.stringify(Object.values(startRobots).map(p => posKey(p)).sort())]);
-    let iterations = 0;
 
-    while (q.length > 0) {
-        iterations++;
-        if (iterations > 15000) return false;
+/**
+ * Pre-computes all possible "last moves" for every square.
+ * For a given square, it finds all other squares from which a robot could have moved to land there.
+ * This is the core of the backwards search.
+ * It ignores other robots, as the backwards search from the target doesn't have robots on the board yet.
+ * @returns A map where key is a position string and value is an array of positions that can move to the key.
+ */
+const precomputeReverseMoves = (walls: Walls): Map<string, Position[]> => {
+    const reverseMoves = new Map<string, Position[]>();
+    const emptyRobots = {} as Robots; // Use an empty robot set for wall-only calculations
 
-        const { robots: currentRobots } = q.shift()!;
-        
-        if (currentRobots[target.color].x === target.x && currentRobots[target.color].y === target.y) {
-            return true;
-        }
-
-        for (const color of ROBOT_COLORS) {
+    for (let y = 0; y < BOARD_SIZE; y++) {
+        for (let x = 0; x < BOARD_SIZE; x++) {
+            const currentPos = { x, y };
+            const key = posKey(currentPos);
+            if (!reverseMoves.has(key)) {
+                reverseMoves.set(key, []);
+            }
+            
             const directions: ('north' | 'south' | 'east' | 'west')[] = ['north', 'south', 'east', 'west'];
-            for (const direction of directions) {
-                const newPos = moveLogic(currentRobots[color].x, currentRobots[color].y, direction, currentRobots, walls);
-                if (newPos) {
-                    const nextRobots = JSON.parse(JSON.stringify(currentRobots)) as Robots;
-                    nextRobots[color] = { ...nextRobots[color], ...newPos };
-                    const key = JSON.stringify(Object.values(nextRobots).map(p => posKey(p)).sort());
-                    if(!visited.has(key)) {
-                         visited.add(key);
-                         q.push({robots: nextRobots});
+            for (const dir of directions) {
+                const landingPos = moveLogic(x, y, dir, emptyRobots, walls);
+                if (landingPos) {
+                    const landingKey = posKey(landingPos);
+                    if (!reverseMoves.has(landingKey)) {
+                        reverseMoves.set(landingKey, []);
                     }
+                    reverseMoves.get(landingKey)!.push(currentPos);
                 }
             }
         }
     }
-    return false;
+    return reverseMoves;
+};
+
+
+/**
+ * Performs a Breadth-First Search starting from the target square backwards.
+ * It uses the pre-computed reverse moves to find the shortest path from the target to all other squares.
+ * @returns A map where the key is a position string and the value is the minimum number of moves from the target.
+ */
+const runBackwardsBfs = (target: Position, reverseMoves: Map<string, Position[]>): Map<string, number> => {
+    const distances = new Map<string, number>();
+    const queue: { pos: Position; dist: number }[] = [];
+
+    const startKey = posKey(target);
+    distances.set(startKey, 0);
+    queue.push({ pos: target, dist: 0 });
+
+    while (queue.length > 0) {
+        const { pos, dist } = queue.shift()!;
+        const key = posKey(pos);
+        
+        const possibleOrigins = reverseMoves.get(key) || [];
+        for (const originPos of possibleOrigins) {
+            const originKey = posKey(originPos);
+            if (!distances.has(originKey)) {
+                distances.set(originKey, dist + 1);
+                queue.push({ pos: originPos, dist: dist + 1 });
+            }
+        }
+    }
+    return distances;
 };
 
 const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: TargetChip } => {
@@ -194,30 +214,73 @@ export default function RicochetRobotsPage() {
 
     const setupNewGame = useCallback(() => {
         setLoading(true);
-        setSelectedRobot(null);
         setSolved(false);
         setIsAnimating(false);
+        setSelectedRobot(null);
 
-        const generate = () => {
-            const { robots, walls, target } = generateInitialBoardState();
-            if (isReachable(robots, walls, target)) {
-                setRobots(robots);
-                setWalls(walls);
-                setTarget(target);
-                setInitialState(JSON.stringify(robots));
-                setMoveCount(0);
-                setLoading(false);
-            } else {
-                setTimeout(generate, 0);
+        setTimeout(() => {
+            let foundPuzzle = false;
+            while (!foundPuzzle) {
+                const { robots, walls, target } = generateInitialBoardState();
+                
+                const reverseMoves = precomputeReverseMoves(walls);
+
+                const targetDistances = runBackwardsBfs(target, reverseMoves);
+
+                const q: { robots: Robots; path: OptimalPathStep[] }[] = [{ robots: robots, path: [] }];
+                const visited = new Set<string>([JSON.stringify(Object.values(robots).map(p => posKey(p)).sort())]);
+                let optimalLength: number | null = null;
+    
+                while(q.length > 0) {
+                    const { robots: currentRobots, path } = q.shift()!;
+                    const targetRobotPos = posKey(currentRobots[target.color]);
+                    const movesFromTarget = targetDistances.get(targetRobotPos);
+
+                    if (movesFromTarget !== undefined) {
+                        const totalMoves = path.length + movesFromTarget;
+                        if(optimalLength === null || totalMoves < optimalLength) {
+                            optimalLength = totalMoves;
+                        }
+                    }
+
+                    if (path.length >= 5 || (optimalLength !== null && path.length >= optimalLength)) {
+                        continue;
+                    }
+
+                    for (const color of ROBOT_COLORS) {
+                        const possibleMoves = calculateMoves(currentRobots[color], currentRobots, walls);
+                        for (const move of possibleMoves) {
+                            const newRobots = structuredClone(currentRobots);
+                            newRobots[color] = { ...newRobots[color], ...move };
+                            const stateKey = JSON.stringify(Object.values(newRobots).map(p => posKey(p)).sort());
+
+                            if (!visited.has(stateKey)) {
+                                visited.add(stateKey);
+                                const newPath = [...path, { color: color, pos: move }];
+                                q.push({ robots: newRobots, path: newPath });
+                            }
+                        }
+                    }
+                }
+
+                if (optimalLength !== null && optimalLength >= 4 && optimalLength <= 12) {
+                    setRobots(robots);
+                    setWalls(walls);
+                    setTarget(target);
+                    setInitialState(JSON.stringify(robots));
+                    setMoveCount(0);
+                    setLoading(false);
+                    foundPuzzle = true;
+                }
             }
-        };
-        generate();
+        }, 10); // 10ms timeout
     }, []);
 
     useEffect(() => {
         setupNewGame();
     }, [setupNewGame]);
     
+
     const handleCellClick = (x: number, y: number) => {
        if (solved || isAnimating) return;
         const robotColor = ROBOT_COLORS.find(c => robots![c].x === x && robots![c].y === y);
@@ -235,9 +298,7 @@ export default function RicochetRobotsPage() {
             if (newRobots[target.color]!.x === target.x && newRobots[target.color]!.y === target.y) {
                 setSolved(true);
                 setSelectedRobot(null);
-
             }
-
             return newRobots;
         });
         setMoveCount(prev => prev + 1);
@@ -269,42 +330,78 @@ export default function RicochetRobotsPage() {
             });
             setMoveCount(prev => prev + 1);
             stepIndex++;
-        }, ANIMATION_SPEED_MS + 50); // Add a small buffer to the animation speed
+        }, ANIMATION_SPEED_MS + 50);
     }, [initialState]);
     
     const solve = useCallback(() => {
-        if (!initialState || !walls || !target) return;
-        
+        if (!initialState || !walls || !target || isAnimating) return;
+
         const startRobots: Robots = JSON.parse(initialState);
+        const reverseMoves = precomputeReverseMoves(walls);
+        const targetDistances = runBackwardsBfs(target, reverseMoves);
+
         const q: { robots: Robots; path: OptimalPathStep[] }[] = [{ robots: startRobots, path: [] }];
         const visited = new Set<string>([JSON.stringify(Object.values(startRobots).map(p => posKey(p)).sort())]);
         
-        while (q.length > 0) {
-            const { robots: currentRobots, path } = q.shift()!;
-            
-            if (currentRobots[target.color].x === target.x && currentRobots[target.color].y === target.y) {
-                animateSolution(path);
-                return;
-            }
+        let bestPath: OptimalPathStep[] | null = null;
+        let bestLength = Infinity;
 
-            if (path.length > 25) continue;
+        while (q.length > 0) {
+            const { robots, path } = q.shift()!; // 'robots' here is the current state (the meeting point)
+            
+            const targetRobotPosKey = posKey(robots[target.color]);
+            const movesFromTarget = targetDistances.get(targetRobotPosKey);
+
+            if (movesFromTarget !== undefined) {
+                const totalLength = path.length + movesFromTarget;
+                if (totalLength < bestLength) {
+                    bestLength = totalLength;
+
+                    let backwardPath: OptimalPathStep[] = [];
+                    let pathTracePos: Robot = robots[target.color];
+                    let currentRobotsInTrace = robots;
+                    let currentDist = movesFromTarget;
+
+                    while (currentDist > 0) {
+                        const moves = calculateMoves({ ...pathTracePos, color: target.color }, currentRobotsInTrace, walls);
+                        
+                        const nextStep = moves.find(move => targetDistances.get(posKey(move)) === currentDist - 1);
+
+                        if (nextStep) {
+                            backwardPath.push({ color: target.color, pos: nextStep });
+                            
+                            const nextRobots = structuredClone(currentRobotsInTrace);
+                            nextRobots[target.color] = { ...nextRobots[target.color], ...nextStep };
+                            currentRobotsInTrace = nextRobots;
+                            pathTracePos = { ...nextStep, color: target.color };
+                            currentDist--;
+                        } else {
+                            break;
+                        }
+                    }
+                    bestPath = [...path, ...backwardPath];
+                }
+            }
+            
+            if (path.length + 1 >= bestLength) continue;
 
             for (const color of ROBOT_COLORS) {
-                 const possibleMoves = calculateMoves(currentRobots[color], currentRobots, walls);
-                 for (const move of possibleMoves) {
-                    const newRobots = JSON.parse(JSON.stringify(currentRobots)) as Robots;
-                    newRobots[color].x = move.x;
-                    newRobots[color].y = move.y;
-                    
+                const possibleMoves = calculateMoves(robots[color], robots, walls);
+                for (const move of possibleMoves) {
+                    const newRobots = structuredClone(robots);
+                    newRobots[color] = { ...newRobots[color], ...move };
                     const stateKey = JSON.stringify(Object.values(newRobots).map(p => posKey(p)).sort());
 
                     if (!visited.has(stateKey)) {
                         visited.add(stateKey);
-                        const newPath = [...path, { color: color, pos: move }];
-                        q.push({ robots: newRobots, path: newPath });
+                        q.push({ robots: newRobots, path: [...path, { color: color, pos: move }] });
                     }
                 }
             }
+        }
+        
+        if (bestPath) {
+            animateSolution(bestPath);
         }
     }, [initialState, walls, target, animateSolution]);
     
@@ -321,6 +418,7 @@ export default function RicochetRobotsPage() {
             setSelectedRobot(null);
         }
     };
+
 
     if (loading || !robots || !walls || !target) {
         return (
@@ -368,22 +466,18 @@ export default function RicochetRobotsPage() {
                         );
                     })}
                 </div>
-                {/* Robots are now rendered in an overlay to allow smooth transitions across the grid */}
                 <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
                      {Object.values(robots).map(robot => {
                         const isSelected = selectedRobot === robot.color;
                         const robotWall = walls[posKey(robot)];
-                        
                         const baseInset = '10%'; 
                         const wallInset = '12%'; 
-                        
                         const robotContainerStyle = {
                             top: robotWall?.north ? wallInset : baseInset,
                             bottom: robotWall?.south ? wallInset : baseInset,
                             left: robotWall?.west ? wallInset : baseInset,
                             right: robotWall?.east ? wallInset : baseInset,
                         };
-
                         return (
                             <div
                                 key={robot.color}
@@ -393,10 +487,7 @@ export default function RicochetRobotsPage() {
                                     transition: `transform ${ANIMATION_SPEED_MS}ms cubic-bezier(0.4, 0.2, 0, 1)`,
                                 }}
                             >
-                                <div
-                                    className={styles.robotContainer}
-                                    style={robotContainerStyle}
-                                >
+                                <div className={styles.robotContainer} style={robotContainerStyle}>
                                     <Bot
                                         className={styles.robotIcon(robot.color, isSelected)}
                                         strokeWidth={1.5}
@@ -409,7 +500,6 @@ export default function RicochetRobotsPage() {
                     })}
                 </div>
             </div>
-
             <div className={styles.panelContainer}>
                  <h1 className="text-4xl font-bold text-slate-700">Ricochet Robots</h1>
                 <div className={styles.panelCard}>
@@ -420,13 +510,11 @@ export default function RicochetRobotsPage() {
                         <span className='capitalize text-lg font-medium'>{target.color} Robot</span>
                     </div>
                 </div>
-
                 <div className={styles.panelCard}>
                     <h2 className={styles.panelTitle}>Game Info</h2>
                     <p className="text-lg">Moves: <span className="font-bold text-slate-600">{moveCount}</span></p>
                     {solved && !isAnimating && <p className="text-2xl font-bold text-green-600 mt-2 animate-pulse">Puzzle Solved!</p>}
                 </div>
-                
                 <div className="grid grid-cols-2 gap-2">
                     <button onClick={resetRound} disabled={isAnimating} className={`${styles.buttonBase} ${styles.buttonBlue}`}><RotateCcw size={20}/> Reset</button>
                     <button onClick={setupNewGame} disabled={isAnimating} className={`${styles.buttonBase} ${styles.buttonGreen}`}><Dices size={20}/> New Game</button>
