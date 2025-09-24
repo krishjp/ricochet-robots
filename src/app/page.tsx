@@ -100,6 +100,7 @@ const runBackwardsBfs = (target: Position, reverseMoves: Map<string, Position[]>
 };
 
 const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: TargetChip } => {
+    console.log("Generating board...");
     const walls: Walls = {};
     const center = BOARD_SIZE / 2 - 1;
 
@@ -163,30 +164,42 @@ const generateInitialBoardState = (): { robots: Robots; walls: Walls; target: Ta
         const isCorner = (isOnTopEdge || isOnBottomEdge) && (isOnLeftEdge || isOnRightEdge);
         const isOnEdge = isOnTopEdge || isOnBottomEdge || isOnLeftEdge || isOnRightEdge;
 
+        if (isCorner) continue;
 
-        if (isCorner) continue; // Don't place extra walls in the board corners
+        let placedThisWall = false;
+        const flipper = Math.round(Math.random());
+        if (isOnEdge) {
+            // single-segment wall
+            const wallObj = walls[key] || {};
+            if (isOnTopEdge && !wallObj.south || isOnBottomEdge && !wallObj.north) { 
+                flipper ? wallObj.east = true: wallObj.west = true; 
+                placedThisWall = true; 
+            }
+            else if (isOnLeftEdge && !wallObj.east || isOnRightEdge && !wallObj.west) { 
+                flipper ? wallObj.north = true: wallObj.south = true; 
+                placedThisWall = true; 
+            }
+            if (placedThisWall) { walls[key] = wallObj; }
 
-        walls[key] = {};
-        if (false) {
-            if (isOnTopEdge) walls[key]!.south = true;
-            else if (isOnBottomEdge) walls[key]!.north = true;
-            else if (isOnLeftEdge) walls[key]!.east = true;
-            else if (isOnRightEdge) walls[key]!.west = true;
-        } else { // Interior wall
+        } else {
+            if (walls[key]) continue;
+            
             const orientation = Math.floor(Math.random() * 4);
             if (orientation === 0) { walls[key] = { north: true, west: true }; }
             else if (orientation === 1) { walls[key] = { north: true, east: true }; }
             else if (orientation === 2) { walls[key] = { south: true, west: true }; }
             else { walls[key] = { south: true, east: true }; }
+            placedThisWall = true;
         }
         
-        // Add a buffer around the newly placed wall
-        for (let dx = -1; dx <= 1; dx++) {
-            for (let dy = -1; dy <= 1; dy++) {
-                forbiddenForWalls.add(posKey({ x: x + dx, y: y + dy }));
+        if (placedThisWall) {
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    forbiddenForWalls.add(posKey({ x: x + dx, y: y + dy }));
+                }
             }
+            placedWalls++;
         }
-        placedWalls++;
     }
 
     const occupied = new Set<string>();
