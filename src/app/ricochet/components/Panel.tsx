@@ -35,7 +35,7 @@ export default function Panel({ target, moveCount, solved, isAnimating, gameId, 
 
             <div className={styles.panelCard}>
                 <h2 className={`${orbitron.className} text-xl font-normal mb-2 `}>Game Info</h2>
-                <p className={`${orbitron.className} text-lg font-normal mb-2 justify-between`}>Moves: <span className="font-bold text-slate-600">{moveCount}</span></p>
+                <p className={`${orbitron.className} text-lg font-normal mb-2 justify-between`}>Moves: <span className=" text-slate-600">{moveCount}</span></p>
                 {solved && !isAnimating && <p className="text-2xl font-bold text-green-600 mt-2 animate-pulse">Puzzle Solved!</p>}
                 {solveStats && (
                     <div className="mt-3 pt-3 border-t border-slate-200 text-sm text-slate-500 space-y-1">
