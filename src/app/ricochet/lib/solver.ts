@@ -53,10 +53,10 @@ export const precomputeReverseMoves = (walls: Walls): Map<string, Position[]> =>
 
 export const runBackwardsBfs = (target: Position, reverseMoves: Map<string, Position[]>): Map<string, number> => {
     const distances = new Map<string, number>();
-    const queue: { pos: Position; dist: number }[] = [];
+    const queue: { pos: Position; dist: number }[] = [{ pos: target, dist: 0 }];
     const startKey = posKey(target);
     distances.set(startKey, 0);
-    queue.push({ pos: target, dist: 0 });
+    
     while (queue.length > 0) {
         const { pos, dist } = queue.shift()!;
         const key = posKey(pos);
@@ -133,17 +133,25 @@ class MinHeap {
     }
 }
 
+const calculateHeuristic = (robots: Robots, target: TargetChip, targetDistances: Map<string, number>): number => {
+    const targetRobotPosKey = posKey(robots[target.color]);
+    return targetDistances.get(targetRobotPosKey) || 0;
+};
+
 export const findOptimalPath = (
     startRobots: Robots, 
     walls: Walls, 
-    target: TargetChip
+    target: TargetChip, 
 ): { path: OptimalPathStep[] | null, statesExplored: number } => {
     
     const openSet = new MinHeap();
+    const reverseMoves = precomputeReverseMoves(walls);
+    const targetDistances = runBackwardsBfs({ x: target.x, y: target.y }, reverseMoves);
+
     openSet.insert({
         robots: startRobots,
         path: [],
-        score: 0,
+        score: calculateHeuristic(startRobots, target, targetDistances),
     });
 
     const visited = new Set<string>();
@@ -154,9 +162,7 @@ export const findOptimalPath = (
         statesExplored++;
 
         const stateKey = JSON.stringify(Object.values(robots).map(p => posKey(p)).sort());
-        if (visited.has(stateKey)) {
-            continue;
-        }
+        if (visited.has(stateKey)) continue;
         visited.add(stateKey);
 
         if (robots[target.color].x === target.x && robots[target.color].y === target.y) {
@@ -165,20 +171,16 @@ export const findOptimalPath = (
 
         for (const color of ROBOT_COLORS) {
             const possibleMoves = calculateMoves(robots[color], robots, walls);
-
             for (const move of possibleMoves) {
                 const newRobots = structuredClone(robots);
                 newRobots[color] = { ...newRobots[color], ...move };
-                
                 const nextStateKey = JSON.stringify(Object.values(newRobots).map(p => posKey(p)).sort());
-                if (!visited.has(nextStateKey)) {
-                     const newPath = [...path, { color: color, pos: move }];
-                    
-                    const g = newPath.length;
-                    const score = g;
 
-                    openSet.insert({ robots: newRobots, path: newPath, score });
-                }
+                const newPath = [...path, { color: color, pos: move }];
+                const g = newPath.length;
+                const h = calculateHeuristic(newRobots, target, targetDistances);
+                const score = g + h;
+                openSet.insert({ robots: newRobots, path: newPath, score });
             }
         }
     }

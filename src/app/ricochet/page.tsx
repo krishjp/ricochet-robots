@@ -150,54 +150,60 @@ export default function RicochetRobotsPage() {
 
     }, [initialState, gameState, isAnimating, animateSolution]);
 
-    if (loading || !gameState) {
-        return (
-            <div className={styles.loadingContainer}>
+    return (
+    <>
+        <Header onShowHelp={() => setShowHelp(true)} />
+
+        {loading || !gameState ? (
+            <main className={styles.loadingContainer}>
                 <Dices className={styles.loadingSpinner} />
                 <p className="text-xl">Generating a solvable puzzle...</p>
-            </div>
-        );
-    }
-
-    const possibleMoves = selectedRobot ? calculateMoves(gameState.robots[selectedRobot], gameState.robots, gameState.walls) : [];
-
-    return (
-        <>
-            <Header onShowHelp={() => setShowHelp(true)} />
-            <main className={styles.mainContainer} onClick={(e) => { if (e.target === e.currentTarget) setSelectedRobot(null); }}>
-                <div className="relative w-full max-w-lg lg:max-w-xl xl:max-w-2xl aspect-square">
-                    <Board 
-                        walls={gameState.walls}
-                        target={gameState.target}
-                        possibleMoves={possibleMoves}
-                        onMove={handleMove}
-                        onCellClick={handleCellClick}
-                    />
-                    <RobotsComponent
-                        robots={gameState.robots}
-                        walls={gameState.walls}
-                        selectedRobot={selectedRobot}
-                        onRobotClick={handleCellClick}
-                    />
-                </div>
-                <Panel
-                    target={gameState.target}
-                    moveCount={moveCount}
-                    solved={solved}
-                    isAnimating={isAnimating}
-                    gameId={gameId}
-                    inputId={inputId}
-                    copied={copied}
-                    solveStats={solveStats}
-                    onInputChange={setInputId}
-                    onReset={resetRound}
-                    onNewGame={setupNewGame}
-                    onSolve={solve}
-                    onCopy={handleCopy}
-                    onLoadGame={handleLoadGame}
-                />
             </main>
-            {showHelp && <HowToPlayModal onClose={() => setShowHelp(false)} />}
-        </>
-    );
-}
+        ) : (
+            (() => {
+                const possibleMoves = selectedRobot 
+                    ? calculateMoves(gameState.robots[selectedRobot], gameState.robots, gameState.walls) 
+                    : [];
+
+                return (
+                    <main className={styles.mainContainer} onClick={(e) => { if (e.target === e.currentTarget) setSelectedRobot(null); }}>
+                        <div className="relative w-full max-w-lg lg:max-w-xl xl:max-w-2xl aspect-square">
+                            <Board 
+                                walls={gameState.walls}
+                                target={gameState.target}
+                                possibleMoves={possibleMoves}
+                                onMove={handleMove}
+                                onCellClick={handleCellClick}
+                            />
+                            <RobotsComponent
+                                robots={gameState.robots}
+                                walls={gameState.walls}
+                                selectedRobot={selectedRobot}
+                                onRobotClick={handleCellClick}
+                            />
+                        </div>
+                        <Panel
+                            target={gameState.target}
+                            moveCount={moveCount}
+                            solved={solved}
+                            isAnimating={isAnimating}
+                            gameId={gameId}
+                            inputId={inputId}
+                            copied={copied}
+                            solveStats={solveStats}
+                            onInputChange={setInputId}
+                            onReset={resetRound}
+                            onNewGame={setupNewGame}
+                            onSolve={solve}
+                            onCopy={handleCopy}
+                            onLoadGame={handleLoadGame}
+                        />
+                    </main>
+                );
+            })()
+        )}
+
+        {showHelp && <HowToPlayModal onClose={() => setShowHelp(false)} />}
+    </>
+    )
+};
