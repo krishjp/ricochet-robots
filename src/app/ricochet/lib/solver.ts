@@ -72,59 +72,116 @@ export const runBackwardsBfs = (target: Position, reverseMoves: Map<string, Posi
     return distances;
 };
 
-export const findOptimalPath = (startRobots: Robots, walls: Walls, target: TargetChip): { path: OptimalPathStep[] | null, statesExplored: number } => {
-    const reverseMoves = precomputeReverseMoves(walls);
-    const targetDistances = runBackwardsBfs(target, reverseMoves);
+type HeapNode = {
+    robots: Robots;
+    path: OptimalPathStep[];
+    score: number;
+};
 
-    const q: { robots: Robots; path: OptimalPathStep[] }[] = [{ robots: startRobots, path: [] }];
-    const visited = new Set<string>([JSON.stringify(Object.values(startRobots).map(p => posKey(p)).sort())]);
-    let bestPath: OptimalPathStep[] | null = null;
-    let bestLength = Infinity;
+class MinHeap {
+    private heap: HeapNode[];
 
-    while (q.length > 0) {
-        const { robots, path } = q.shift()!;
-        const targetRobotPosKey = posKey(robots[target.color]);
-        const movesFromTarget = targetDistances.get(targetRobotPosKey);
+    constructor() {
+        this.heap = [];
+    }
 
-        if (movesFromTarget !== undefined) {
-            const totalLength = path.length + movesFromTarget;
-            if (totalLength < bestLength) {
-                bestLength = totalLength;
-                let backwardPath: OptimalPathStep[] = [];
-                let pathTracePos: Robot = robots[target.color];
-                let currentRobotsInTrace = robots;
-                let currentDist = movesFromTarget;
-                
-                while (currentDist > 0) {
-                    const moves = calculateMoves(pathTracePos, currentRobotsInTrace, walls);
-                    const nextStep = moves.find(move => targetDistances.get(posKey(move)) === currentDist - 1);
-                    if (nextStep) {
-                        backwardPath.push({ color: target.color, pos: nextStep });
-                        const nextRobots = structuredClone(currentRobotsInTrace);
-                        nextRobots[target.color] = { ...nextRobots[target.color], ...nextStep };
-                        currentRobotsInTrace = nextRobots;
-                        pathTracePos = { ...nextStep, color: target.color };
-                        currentDist--;
-                    } else { break; }
-                }
-                bestPath = [...path, ...backwardPath];
-            }
+    public insert(node: HeapNode): void {
+        this.heap.push(node);
+        this.bubbleUp(this.heap.length - 1);
+    }
+
+    public extractMin(): HeapNode | null {
+        if (this.heap.length === 0) return null;
+        this.swap(0, this.heap.length - 1);
+        const min = this.heap.pop()!;
+        this.sinkDown(0);
+        return min;
+    }
+
+    public isEmpty(): boolean {
+        return this.heap.length === 0;
+    }
+
+    private bubbleUp(index: number): void {
+        while (index > 0) {
+            const parentIndex = Math.floor((index - 1) / 2);
+            if (this.heap[parentIndex].score <= this.heap[index].score) break;
+            this.swap(index, parentIndex);
+            index = parentIndex;
         }
-        
-        if (path.length + 1 >= bestLength) continue;
+    }
+
+    private sinkDown(index: number): void {
+        const left = 2 * index + 1;
+        const right = 2 * index + 2;
+        let smallest = index;
+
+        if (left < this.heap.length && this.heap[left].score < this.heap[smallest].score) {
+            smallest = left;
+        }
+        if (right < this.heap.length && this.heap[right].score < this.heap[smallest].score) {
+            smallest = right;
+        }
+        if (smallest !== index) {
+            this.swap(index, smallest);
+            this.sinkDown(smallest);
+        }
+    }
+
+    private swap(i: number, j: number): void {
+        [this.heap[i], this.heap[j]] = [this.heap[j], this.heap[i]];
+    }
+}
+
+export const findOptimalPath = (
+    startRobots: Robots, 
+    walls: Walls, 
+    target: TargetChip
+): { path: OptimalPathStep[] | null, statesExplored: number } => {
+    
+    const openSet = new MinHeap();
+    openSet.insert({
+        robots: startRobots,
+        path: [],
+        score: 0,
+    });
+
+    const visited = new Set<string>();
+    let statesExplored = 0;
+
+    while (!openSet.isEmpty()) {
+        const { robots, path } = openSet.extractMin()!;
+        statesExplored++;
+
+        const stateKey = JSON.stringify(Object.values(robots).map(p => posKey(p)).sort());
+        if (visited.has(stateKey)) {
+            continue;
+        }
+        visited.add(stateKey);
+
+        if (robots[target.color].x === target.x && robots[target.color].y === target.y) {
+            return { path, statesExplored };
+        }
 
         for (const color of ROBOT_COLORS) {
             const possibleMoves = calculateMoves(robots[color], robots, walls);
+
             for (const move of possibleMoves) {
                 const newRobots = structuredClone(robots);
                 newRobots[color] = { ...newRobots[color], ...move };
-                const stateKey = JSON.stringify(Object.values(newRobots).map(p => posKey(p)).sort());
-                if (!visited.has(stateKey)) {
-                    visited.add(stateKey);
-                    q.push({ robots: newRobots, path: [...path, { color: color, pos: move }] });
+                
+                const nextStateKey = JSON.stringify(Object.values(newRobots).map(p => posKey(p)).sort());
+                if (!visited.has(nextStateKey)) {
+                     const newPath = [...path, { color: color, pos: move }];
+                    
+                    const g = newPath.length;
+                    const score = g;
+
+                    openSet.insert({ robots: newRobots, path: newPath, score });
                 }
             }
         }
     }
-    return { path: bestPath, statesExplored: visited.size };
+
+    return { path: null, statesExplored };
 };
