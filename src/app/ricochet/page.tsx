@@ -156,8 +156,10 @@ export default function RicochetRobotsPage() {
 
         {loading || !gameState ? (
             <main className={styles.loadingContainer}>
-                <Dices className={styles.loadingSpinner} />
-                <p className="text-xl">Generating a solvable puzzle...</p>
+                <div className="flex flex-row items-center gap-4">
+                    <Dices className={styles.loadingSpinner} />
+                    <p className="text-xl">Generating a solvable puzzle...</p>
+                </div>
             </main>
         ) : (
             (() => {
