@@ -74,4 +74,5 @@ Movement rules are defined once, in `solver.ts`. The UI's `calculateMoves` and t
 ## Config quirks
 
 - The repo has two PostCSS configs. `postcss.config.js` is the Tailwind 3 setup that matches the installed deps. `postcss.config.mjs` references `@tailwindcss/postcss` (Tailwind 4), which is not installed.
-- `eslint.config.mjs` is a flat config that uses `@eslint/eslintrc`, which is also not in `package.json`.
+- `eslint.config.mjs` is a flat config, using `@eslint/eslintrc`'s `FlatCompat` to load `eslint-config-next`'s legacy-style configs under ESLint 9.
+- `next lint` is deprecated as of Next.js 15 and will be removed in Next.js 16; migrating to the ESLint CLI directly (`npx @next/codemod@canary next-lint-to-eslint-cli .`) is a future task, not yet done.
