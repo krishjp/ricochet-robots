@@ -74,4 +74,3 @@ Movement rules are defined once, in `solver.ts`. The UI's `calculateMoves` and t
 
 - The repo has two PostCSS configs. `postcss.config.js` is the Tailwind 3 setup that matches the installed deps. `postcss.config.mjs` references `@tailwindcss/postcss` (Tailwind 4), which is not installed.
 - `eslint.config.mjs` is a flat config that uses `@eslint/eslintrc`, which is also not in `package.json`.
-- The README is the unmodified `create-next-app` boilerplate.
