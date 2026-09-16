@@ -121,10 +121,11 @@ describe('findOptimalPath', () => {
         expect(result.statesExplored).toBeGreaterThan(1);
     });
 
-    // Regression case: one of the more demanding boards found while stress-testing the solver.
-    // Well past what the in-app generator would ever hand a player (it caps exploration at
-    // GENERATOR_STATE_BUDGET = 200,000 states), so this exercises the solver's upper range directly.
-    it('solves a known worst-case board within the default limits', () => {
+    // Regression case: a demanding board found while stress-testing the solver, not the hardest
+    // possible (harder ones exist, e.g. 15 moves / ~2.9M states). Well past what the in-app
+    // generator would ever hand a player (it caps exploration at GENERATOR_STATE_BUDGET =
+    // 200,000 states), so this exercises the solver's upper range directly.
+    it('solves a demanding board within the default limits', () => {
         const state = decodeGameId(
             '4DBAA8981-03D-7707828718830000F2F011041F5016F172012F5022F273043F5036F374044F5046F475045F5056F576046F5066F677047F5076F778048F5086F879049F5096F97A04AF50A6FA7B04BF50B6FB7C04CF50C6FC7D04DF50D6FD7E04EF50E2FE7FF39B2EB3A234C1733AD0E30533D106A36C3C51D73A722B02D2373'
         );

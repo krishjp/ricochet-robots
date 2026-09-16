@@ -57,6 +57,8 @@ Keep everything the worker imports free of browser-only and `next/font` code. Us
 
 `generateSolvablePuzzle` keeps generating random boards until the exact solver finds a solution of `MIN_SOLUTION_MOVES` to `MAX_SOLUTION_MOVES` moves. It gives each board at most `GENERATOR_STATE_BUDGET` states. It then returns the board and its solution together.
 
+`MAX_SOLUTION_MOVES` (12) and `GENERATOR_STATE_BUDGET` (200,000) only constrain what the *generator* is willing to hand a player; they are not a limit of the solver itself. `findOptimalPath`'s own default (`maxDepth: 30`, `maxStates: 3_000_000`) is far larger, and boards needing more than 12 moves or well over a million states do exist and solve correctly — see the "known worst-case board" test in `solver.test.ts` (12 moves, ~1.2M states) and the harder ones found alongside it (up to 15 moves, ~2.9M states) that just weren't kept.
+
 Movement rules are defined once, in `solver.ts`. The UI's `calculateMoves` and the solver's precomputed stop table both derive from `moveLogic`/`hasWall`.
 
 ### Game ID format
