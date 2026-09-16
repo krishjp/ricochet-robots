@@ -8,9 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev     # dev server at http://localhost:3000 (/ redirects to /ricochet; temporary redirect, no landing page by design)
 npm run build   # production build; also runs type-checking
 npm run lint    # next lint
+npm test        # vitest unit tests for solver.ts, gameId.ts, and boardGenerator.ts
 ```
 
-There is no test suite. Use `npm run build` to catch type errors.
+Tests live next to the code they cover (`*.test.ts` under `src/app/ricochet/lib/`) and only exercise the pure logic modules — nothing in `components/` or `page.tsx` is tested.
 
 ## Architecture
 
@@ -73,5 +74,5 @@ Movement rules are defined once, in `solver.ts`. The UI's `calculateMoves` and t
 ## Config quirks
 
 - The repo has two PostCSS configs. `postcss.config.js` is the Tailwind 3 setup that matches the installed deps. `postcss.config.mjs` references `@tailwindcss/postcss` (Tailwind 4), which is not installed.
-- `eslint.config.mjs` is a flat config that uses `@eslint/eslintrc`, which is also not in `package.json`.
-- The README is the unmodified `create-next-app` boilerplate.
+- `eslint.config.mjs` is a flat config, using `@eslint/eslintrc`'s `FlatCompat` to load `eslint-config-next`'s legacy-style configs under ESLint 9.
+- `next lint` is deprecated as of Next.js 15 and will be removed in Next.js 16; migrating to the ESLint CLI directly (`npx @next/codemod@canary next-lint-to-eslint-cli .`) is a future task, not yet done.

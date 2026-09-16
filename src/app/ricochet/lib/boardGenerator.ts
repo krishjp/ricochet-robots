@@ -74,13 +74,13 @@ export const generateInitialBoardState = (): { robots: Robots; walls: Walls; tar
         if (isOnEdge) {
             // single-segment wall
             const wallObj = walls[key] || {};
-            if (isOnTopEdge && !wallObj.south || isOnBottomEdge && !wallObj.north) { 
-                flipper ? wallObj.east = true: wallObj.west = true; 
-                placedThisWall = true; 
+            if (isOnTopEdge && !wallObj.south || isOnBottomEdge && !wallObj.north) {
+                if (flipper) wallObj.east = true; else wallObj.west = true;
+                placedThisWall = true;
             }
-            else if (isOnLeftEdge && !wallObj.east || isOnRightEdge && !wallObj.west) { 
-                flipper ? wallObj.north = true: wallObj.south = true; 
-                placedThisWall = true; 
+            else if (isOnLeftEdge && !wallObj.east || isOnRightEdge && !wallObj.west) {
+                if (flipper) wallObj.north = true; else wallObj.south = true;
+                placedThisWall = true;
             }
             if (placedThisWall) { walls[key] = wallObj; }
 
