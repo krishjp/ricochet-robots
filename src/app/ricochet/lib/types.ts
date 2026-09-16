@@ -15,6 +15,14 @@ export type GameState = {
     target: TargetChip;
 };
 
+// `path` is null when no solution was found within the solver's limits.
+export type SolveResult = { path: OptimalPathStep[] | null; statesExplored: number; timeMs: number };
+
+// Messages exchanged with solver.worker.ts
+export type SolverJob = { type: 'generate' } | { type: 'solve'; state: GameState };
+export type SolverRequest = SolverJob & { id: number };
+export type SolverResponse = { id: number; type: SolverJob['type']; state: GameState; solution: SolveResult };
+
 export const orbitron = Orbitron({
   subsets: ['latin'],
   weight: ['400', '700', '900'], // We'll use the '900' (black) weight for a bold, factory look

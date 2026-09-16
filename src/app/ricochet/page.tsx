@@ -1,6 +1,6 @@
 // /app/ricochet/page.tsx
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dices } from 'lucide-react';
 
 // Styles & Components
@@ -12,67 +12,94 @@ import RobotsComponent from './components/Robots';
 import Panel from './components/Panel';
 
 // Logic, Types, & Constants
-import { GameState, Robots, OptimalPathStep, RobotColor, Position } from './lib/types';
-import { generateSolvablePuzzle } from './lib/boardGenerator';
+import { GameState, Robots, OptimalPathStep, RobotColor, Position, SolveResult, SolverResponse } from './lib/types';
 import { encodeGameId, decodeGameId } from './lib/gameId';
-import { findOptimalPath, calculateMoves } from './lib/solver';
+import { calculateMoves } from './lib/solver';
+import { useSolverWorker } from './lib/useSolverWorker';
 import { ROBOT_COLORS, ANIMATION_DURATION_MS } from './lib/constants';
 
 
 export default function RicochetRobotsPage() {
     const [gameState, setGameState] = useState<GameState | null>(null);
-    const [initialState, setInitialState] = useState<string | null>(null); // Storing initial robots as string
-    
+    const [initialRobots, setInitialRobots] = useState<Robots | null>(null);
+
     const [selectedRobot, setSelectedRobot] = useState<RobotColor | null>(null);
     const [moveCount, setMoveCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [solved, setSolved] = useState(false);
     const [isAnimating, setIsAnimating] = useState(false);
-    const [solveStats, setSolveStats] = useState<{ time: number; states: number } | null>(null);
-    
+    // Computed in the background as soon as a game starts; null while the worker is still solving.
+    const [solution, setSolution] = useState<SolveResult | null>(null);
+    const [solutionShown, setSolutionShown] = useState(false);
+
     const [gameId, setGameId] = useState<string>('');
     const [inputId, setInputId] = useState<string>('');
     const [copied, setCopied] = useState<boolean>(false);
     const [showHelp, setShowHelp] = useState<boolean>(false);
 
+    const animationRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const stopAnimation = useCallback(() => {
+        if (animationRef.current) clearInterval(animationRef.current);
+        animationRef.current = null;
+        setIsAnimating(false);
+    }, []);
+
+    useEffect(() => stopAnimation, [stopAnimation]);
+
+    const startGame = useCallback((state: GameState) => {
+        stopAnimation();
+        setGameState(state);
+        setInitialRobots(state.robots);
+        setGameId(encodeGameId(state));
+        setMoveCount(0);
+        setSolved(false);
+        setSelectedRobot(null);
+        setSolutionShown(false);
+    }, [stopAnimation]);
+
+    const handleWorkerResult = useCallback((response: SolverResponse) => {
+        if (response.type === 'generate') {
+            startGame(response.state);
+            setLoading(false);
+        }
+        setSolution(response.solution);
+    }, [startGame]);
+
+    const runSolverJob = useSolverWorker(handleWorkerResult);
+
     const setupNewGame = useCallback(() => {
         setLoading(true);
-        setTimeout(() => {
-            const newState = generateSolvablePuzzle();
-            setGameState(newState);
-            setInitialState(JSON.stringify(newState.robots));
-            setGameId(encodeGameId(newState));
-            setMoveCount(0);
-            setSolved(false);
-            setSelectedRobot(null);
-            setSolveStats(null);
-            setLoading(false);
-        }, 10);
-    }, []);
+        setSolution(null);
+        runSolverJob({ type: 'generate' });
+    }, [runSolverJob]);
 
     useEffect(() => {
         setupNewGame();
     }, [setupNewGame]);
 
     const handleLoadGame = () => {
+        if (isAnimating) return;
         const loadedState = decodeGameId(inputId);
         if (loadedState) {
-            setGameState(loadedState);
-            setInitialState(JSON.stringify(loadedState.robots));
-            setGameId(inputId.toUpperCase());
-            setMoveCount(0);
-            setSolved(false);
-            setSelectedRobot(null);
+            startGame(loadedState);
             setInputId('');
+            setSolution(null);
+            runSolverJob({ type: 'solve', state: loadedState });
         } else {
             alert("Invalid DriftingDroids Game ID!");
         }
     };
 
-    const handleCopy = () => {
-        navigator.clipboard.writeText(gameId);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+    const handleCopy = async () => {
+        try {
+            await navigator.clipboard.writeText(gameId);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch {
+            // Clipboard API is unavailable outside secure contexts or when permission is denied;
+            // the ID stays visible in the read-only field for manual copying.
+        }
     };
 
     const handleCellClick = (x: number, y: number) => {
@@ -85,10 +112,10 @@ export default function RicochetRobotsPage() {
 
     const handleMove = (pos: Position) => {
         if (!selectedRobot || !gameState || isAnimating) return;
-        
+
         const newRobots = { ...gameState.robots };
         newRobots[selectedRobot] = { ...newRobots[selectedRobot], ...pos };
-        
+
         setGameState(prev => ({ ...prev!, robots: newRobots }));
         setMoveCount(prev => prev + 1);
 
@@ -97,27 +124,30 @@ export default function RicochetRobotsPage() {
             setSelectedRobot(null);
         }
     };
-    
+
     const resetRound = () => {
-        if (!initialState || isAnimating) return;
-        const initialRobots = JSON.parse(initialState);
+        if (!initialRobots || isAnimating) return;
         setGameState(prev => ({ ...prev!, robots: initialRobots }));
         setMoveCount(0);
         setSelectedRobot(null);
         setSolved(false);
-        setSolveStats(null);
+        setSolutionShown(false);
     };
 
-    const animateSolution = useCallback((steps: OptimalPathStep[]) => {
-        if (!steps || steps.length === 0 || !initialState) return;
+    const animateSolution = (steps: OptimalPathStep[]) => {
+        if (!initialRobots) return;
+        stopAnimation();
+        // Return to the starting position before playing the solution
+        setGameState(prev => ({ ...prev!, robots: initialRobots }));
+        setMoveCount(0);
+        setSelectedRobot(null);
+        setSolved(false);
         setIsAnimating(true);
-        resetRound(); // Reset to start before animating
 
         let stepIndex = 0;
-        const interval = setInterval(() => {
+        animationRef.current = setInterval(() => {
             if (stepIndex >= steps.length) {
-                clearInterval(interval);
-                setIsAnimating(false);
+                stopAnimation();
                 setSolved(true);
                 return;
             }
@@ -130,25 +160,13 @@ export default function RicochetRobotsPage() {
             setMoveCount(prev => prev + 1);
             stepIndex++;
         }, ANIMATION_DURATION_MS + 50);
-    }, [initialState]);
+    };
 
-    const solve = useCallback(() => {
-        if (!initialState || !gameState || isAnimating) return;
-
-        const startTime = performance.now();
-        const startRobots: Robots = JSON.parse(initialState);
-        const { path, statesExplored } = findOptimalPath(startRobots, gameState.walls, gameState.target);
-        console.log(path, statesExplored);
-        const endTime = performance.now();
-
-        if (path) animateSolution(path);
-
-        setSolveStats({
-            time: endTime - startTime,
-            states: statesExplored,
-        });
-
-    }, [initialState, gameState, isAnimating, animateSolution]);
+    const showSolution = () => {
+        if (!solution?.path || isAnimating) return;
+        setSolutionShown(true);
+        animateSolution(solution.path);
+    };
 
     return (
     <>
@@ -163,14 +181,15 @@ export default function RicochetRobotsPage() {
             </main>
         ) : (
             (() => {
-                const possibleMoves = selectedRobot 
-                    ? calculateMoves(gameState.robots[selectedRobot], gameState.robots, gameState.walls) 
+                const possibleMoves = selectedRobot
+                    ? calculateMoves(gameState.robots[selectedRobot], gameState.robots, gameState.walls)
                     : [];
+                const solverStatus = !solution ? 'solving' : solution.path ? 'ready' : 'unsolvable';
 
                 return (
                     <main className={styles.mainContainer} onClick={(e) => { if (e.target === e.currentTarget) setSelectedRobot(null); }}>
                         <div className="relative w-full max-w-lg lg:max-w-xl xl:max-w-2xl aspect-square">
-                            <Board 
+                            <Board
                                 walls={gameState.walls}
                                 target={gameState.target}
                                 possibleMoves={possibleMoves}
@@ -192,11 +211,12 @@ export default function RicochetRobotsPage() {
                             gameId={gameId}
                             inputId={inputId}
                             copied={copied}
-                            solveStats={solveStats}
+                            solverStatus={solverStatus}
+                            solveStats={solutionShown && solution ? { time: solution.timeMs, states: solution.statesExplored } : null}
                             onInputChange={setInputId}
                             onReset={resetRound}
                             onNewGame={setupNewGame}
-                            onSolve={solve}
+                            onSolve={showSolution}
                             onCopy={handleCopy}
                             onLoadGame={handleLoadGame}
                         />

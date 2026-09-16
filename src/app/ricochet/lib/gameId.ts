@@ -1,6 +1,7 @@
 // /app/ricochet/lib/gameId.ts
 import { GameState, Robots, TargetChip, Walls } from './types';
 import { ROBOT_COLORS, REVERSE_WALL_TYPE_MAP } from './constants';
+import { posKey } from './solver';
 
 const getWallType = (wall: { [key: string]: boolean }): number | null => {
     if (wall.north && wall.west) return 0;
@@ -36,37 +37,33 @@ export const encodeGameId = (gameState: GameState): string => {
     return `${robotStr}-${targetStr}-${wallStr}`.toUpperCase();
 };
 
+// <robot count><x><y> per robot - <target color index><x><y> - <x><y><wall type> per walled cell
+const GAME_ID_PATTERN = /^([0-9a-f])((?:[0-9a-f]{2})*)-([0-9a-f]{3})-((?:[0-9a-f]{3})*)$/;
+
+// Returns null for any malformed ID rather than a partially built state.
 export const decodeGameId = (gameId: string): GameState | null => {
-    try {
-        const parts = gameId.toLowerCase().split('-');
-        if (parts.length !== 3) return null;
-        const [robotStr, targetStr, wallStr] = parts;
-        const numRobots = parseInt(robotStr[0], 16);
-        const robotPositionsStr = robotStr.substring(1);
-        const robots: Robots = {} as Robots;
-        for (let i = 0; i < numRobots; i++) {
-            const color = ROBOT_COLORS[i];
-            const hexPair = robotPositionsStr.substring(i * 2, i * 2 + 2);
-            const x = parseInt(hexPair[0], 16);
-            const y = parseInt(hexPair[1], 16);
-            robots[color] = { x, y, color };
-        }
-        const targetColor = ROBOT_COLORS[parseInt(targetStr[0], 16)];
-        const targetX = parseInt(targetStr[1], 16);
-        const targetY = parseInt(targetStr[2], 16);
-        const target: TargetChip = { x: targetX, y: targetY, color: targetColor };
-        const walls: Walls = {};
-        for (let i = 0; i < wallStr.length; i += 3) {
-            const wallChunk = wallStr.substring(i, i + 3);
-            const x = parseInt(wallChunk[0], 16);
-            const y = parseInt(wallChunk[1], 16);
-            const type = parseInt(wallChunk[2], 16);
-            const key = `${x},${y}`;
-            walls[key] = { ...walls[key], ...REVERSE_WALL_TYPE_MAP[type] };
-        }
-        return { robots, walls, target };
-    } catch (error) {
-        console.error("Failed to decode Game ID:", error);
-        return null;
+    const match = gameId.trim().toLowerCase().match(GAME_ID_PATTERN);
+    if (!match) return null;
+    const [, countStr, robotStr, targetStr, wallStr] = match;
+    const hex = (digit: string) => parseInt(digit, 16);
+
+    if (hex(countStr) !== ROBOT_COLORS.length || robotStr.length !== ROBOT_COLORS.length * 2) return null;
+    const robots: Robots = {} as Robots;
+    ROBOT_COLORS.forEach((color, i) => {
+        robots[color] = { x: hex(robotStr[i * 2]), y: hex(robotStr[i * 2 + 1]), color };
+    });
+    if (new Set(ROBOT_COLORS.map(color => posKey(robots[color]))).size !== ROBOT_COLORS.length) return null;
+
+    const targetIndex = hex(targetStr[0]);
+    if (targetIndex >= ROBOT_COLORS.length) return null;
+    const target: TargetChip = { x: hex(targetStr[1]), y: hex(targetStr[2]), color: ROBOT_COLORS[targetIndex] };
+
+    const walls: Walls = {};
+    for (let i = 0; i < wallStr.length; i += 3) {
+        const type = hex(wallStr[i + 2]);
+        if (type >= REVERSE_WALL_TYPE_MAP.length) return null;
+        const key = `${hex(wallStr[i])},${hex(wallStr[i + 1])}`;
+        walls[key] = { ...walls[key], ...REVERSE_WALL_TYPE_MAP[type] };
     }
+    return { robots, walls, target };
 };

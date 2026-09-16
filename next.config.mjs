@@ -5,7 +5,8 @@ const nextConfig = {
       {
         source: '/',
         destination: '/ricochet',
-        permanent: true,
+        // Temporary (307) so browsers don't cache it if a landing page is added at / later
+        permanent: false,
       },
     ]
   },

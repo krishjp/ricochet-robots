@@ -1,6 +1,6 @@
 // /app/ricochet/components/Panel.tsx
 'use client';
-import { Target, Bot, RotateCcw, Dices, ArrowRight, Copy, Upload } from 'lucide-react';
+import { Target, Bot, RotateCcw, Dices, ArrowRight, Copy, Upload, Loader2 } from 'lucide-react';
 import { TargetChip , orbitron } from '../lib/types';
 import { styles, colors } from '../../styles/ricochet-styles';
 
@@ -12,6 +12,7 @@ interface PanelProps {
     gameId: string;
     inputId: string;
     copied: boolean;
+    solverStatus: 'solving' | 'ready' | 'unsolvable';
     solveStats: { time: number; states: number } | null;
     onInputChange: (value: string) => void;
     onReset: () => void;
@@ -21,7 +22,7 @@ interface PanelProps {
     onLoadGame: () => void;
 }
 
-export default function Panel({ target, moveCount, solved, isAnimating, gameId, inputId, copied, solveStats, onInputChange, onReset, onNewGame, onSolve, onCopy, onLoadGame }: PanelProps) {
+export default function Panel({ target, moveCount, solved, isAnimating, gameId, inputId, copied, solverStatus, solveStats, onInputChange, onReset, onNewGame, onSolve, onCopy, onLoadGame }: PanelProps) {
     return (
         <div className={styles.panelContainer}>
             <div className={styles.panelCard}>
@@ -55,8 +56,10 @@ export default function Panel({ target, moveCount, solved, isAnimating, gameId, 
                 <button onClick={onReset} disabled={isAnimating} className={`${styles.buttonBase} ${styles.buttonBlue}`}><RotateCcw size={20}/> Reset</button>
                 <button onClick={onNewGame} disabled={isAnimating} className={`${styles.buttonBase} ${styles.buttonGreen}`}><Dices size={20}/> New Game</button>
             </div>
-             <button onClick={onSolve} disabled={isAnimating} className={`${styles.buttonBase} ${styles.buttonPurple}`}>
-                <ArrowRight size={20}/> Show Optimal Solution
+             <button onClick={onSolve} disabled={isAnimating || solverStatus !== 'ready'} className={`${styles.buttonBase} ${styles.buttonPurple}`}>
+                {solverStatus === 'solving' && <><Loader2 size={20} className="animate-spin"/> Solving...</>}
+                {solverStatus === 'ready' && <><ArrowRight size={20}/> Show Optimal Solution</>}
+                {solverStatus === 'unsolvable' && 'No Solution Found'}
              </button>
 
              <div className="space-y-4">
@@ -72,7 +75,7 @@ export default function Panel({ target, moveCount, solved, isAnimating, gameId, 
                      <h2 className={`${orbitron.className} text-xl font-normal mb-2 `}>Load a Game</h2>
                      <div className="flex gap-2">
                         <input type="text" placeholder="Paste a Game ID..." value={inputId} onChange={(e) => onInputChange(e.target.value)} className="flex-grow bg-white border border-slate-300 px-2 py-1 rounded-md text-sm" />
-                        <button onClick={onLoadGame} disabled={!inputId} className={`${styles.buttonBase} ${styles.buttonGreen} w-24`}><Upload size={16}/> Load</button>
+                        <button onClick={onLoadGame} disabled={!inputId || isAnimating} className={`${styles.buttonBase} ${styles.buttonGreen} w-24`}><Upload size={16}/> Load</button>
                     </div>
                 </div>
              </div>
