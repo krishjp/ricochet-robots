@@ -8,9 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev     # dev server at http://localhost:3000 (/ redirects to /ricochet; temporary redirect, no landing page by design)
 npm run build   # production build; also runs type-checking
 npm run lint    # next lint
+npm test        # vitest unit tests for solver.ts, gameId.ts, and boardGenerator.ts
 ```
 
-There is no test suite. Use `npm run build` to catch type errors.
+Tests live next to the code they cover (`*.test.ts` under `src/app/ricochet/lib/`) and only exercise the pure logic modules — nothing in `components/` or `page.tsx` is tested.
 
 ## Architecture
 
