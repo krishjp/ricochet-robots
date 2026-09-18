@@ -1,5 +1,6 @@
 // /app/ricochet/components/Header.tsx
 'use client';
+import Link from 'next/link';
 import { Lightbulb } from 'lucide-react';
 import { orbitron } from '../lib/types';
 
@@ -13,7 +14,7 @@ export default function Header({ onShowHelp }: HeaderProps) {
         <div className="w-full bg-slate-100 border-b border-slate-300 shadow-sm">
             <header className="max-w-7xl mx-auto py-2 px-4 flex justify-between items-center text-slate-700">
                 <h1 className={`${orbitron.className} text-3xl md:text-4xl font-black tracking-wide`}>
-                    Ricochet Robots
+                    <Link href="/">Ricochet Robots</Link>
                 </h1>
                 <button 
                     onClick={onShowHelp} 

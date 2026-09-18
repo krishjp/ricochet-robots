@@ -1,5 +1,5 @@
 // /app/ricochet/lib/gameId.ts
-import { GameState, Robots, TargetChip, Walls } from './types';
+import type { GameState, Robots, TargetChip, Walls } from './types';
 import { ROBOT_COLORS, REVERSE_WALL_TYPE_MAP } from './constants';
 import { posKey } from './solver';
 
