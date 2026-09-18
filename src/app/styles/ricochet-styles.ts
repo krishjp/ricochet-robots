@@ -36,4 +36,20 @@ export const styles = {
     buttonBlue: "bg-blue-600 text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-400",
     buttonGreen: "bg-green-600 text-white hover:bg-green-700 focus:ring-2 focus:ring-green-400",
     buttonPurple: "bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed focus:ring-2 focus:ring-purple-400",
+    buttonRed: "bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-400",
+    buttonSlate: "bg-slate-600 text-white hover:bg-slate-700 focus:ring-2 focus:ring-slate-400",
+    buttonDisabled: "disabled:bg-gray-400 disabled:cursor-not-allowed",
+    input: "bg-white border border-slate-300 px-2 py-1 rounded-md text-sm min-w-0",
+
+    // Lobby entry
+    landingContainer: "flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] bg-slate-100 p-4 gap-8 text-slate-800",
+
+    // Multiplayer
+    boardPlaceholder: "absolute inset-0 flex flex-col items-center justify-center gap-4 border-2 border-slate-400 bg-white shadow-2xl text-slate-500 text-center p-4",
+    notice: "p-3 rounded-lg bg-amber-100 border border-amber-300 text-amber-900 text-sm flex justify-between items-start gap-2",
+    countdown: "text-4xl font-black tabular-nums",
+    playerRow: "flex items-center gap-2 py-1.5 px-2 rounded-md",
+    playerRowActive: "bg-amber-100",
+    bidBadge: "ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 tabular-nums",
+    bidBadgeFailed: "line-through opacity-60",
 };
