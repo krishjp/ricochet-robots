@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <!-- Horizontal-only blur, so the trailing copies read as motion -->
+    <filter id="motion-blur" x="-50%" y="-10%" width="200%" height="120%">
+      <feGaussianBlur stdDeviation="1.6 0" />
+    </filter>
+    <!-- lucide-react's Bot icon, the robot drawn on the board (Robots.tsx), in the red robot's text-red-600 -->
+    <g id="bot" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 8V4H8" />
+      <rect width="16" height="12" x="4" y="8" rx="2" />
+      <path d="M2 14h2" />
+      <path d="M20 14h2" />
+      <path d="M15 13v2" />
+      <path d="M9 13v2" />
+    </g>
+  </defs>
+
+  <g transform="translate(8 4)">
+    <!-- Blurred trailing copies, fading with distance -->
+    <use href="#bot" x="-8" opacity="0.2" filter="url(#motion-blur)" />
+    <use href="#bot" x="-4" opacity="0.4" filter="url(#motion-blur)" />
+    <use href="#bot" />
+  </g>
+</svg>
