@@ -48,6 +48,7 @@ export const styles = {
     boardPlaceholder: "absolute inset-0 flex flex-col items-center justify-center gap-4 border-2 border-slate-400 bg-white shadow-2xl text-slate-500 text-center p-4",
     notice: "p-3 rounded-lg bg-amber-100 border border-amber-300 text-amber-900 text-sm flex justify-between items-start gap-2",
     countdown: "text-4xl font-black tabular-nums",
+    solvedBanner: "absolute top-4 left-1/2 -translate-x-1/2 z-10 pointer-events-none flex items-center gap-2 whitespace-nowrap px-4 py-2 rounded-full bg-green-600 text-white font-bold shadow-xl animate-pulse",
     playerRow: "flex items-center gap-2 py-1.5 px-2 rounded-md",
     playerRowActive: "bg-amber-100",
     bidBadge: "ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 tabular-nums",

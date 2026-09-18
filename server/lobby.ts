@@ -58,7 +58,7 @@ export class Lobby {
     private countdownEndsAt: number | null = null;
     private failed: string[] = [];
     private demo: Demo | null = null;
-    private outcome: { winnerId: string | null; moves: number | null } | null = null;
+    private outcome: { winnerId: string | null; moves: number | null; winningRobots: Robots | null } | null = null;
     // The bid countdown or the current demonstration's time limit; never both at once.
     private timer: ReturnType<typeof setTimeout> | null = null;
     private disposed = false;
@@ -188,7 +188,7 @@ export class Lobby {
         const targetRobot = demo.robots[target.color];
         if (targetRobot.x === target.x && targetRobot.y === target.y) {
             this.player(playerId)!.score++;
-            this.reveal(playerId, demo.movesMade);
+            this.reveal(playerId, demo.movesMade, demo.robots);
         } else if (demo.movesMade >= demo.bid.moves) {
             this.failDemo();
         } else {
@@ -262,12 +262,12 @@ export class Lobby {
         this.startNextDemo();
     }
 
-    private reveal(winnerId: string | null, moves: number | null) {
+    private reveal(winnerId: string | null, moves: number | null, winningRobots: Robots | null = null) {
         this.clearTimer();
         this.countdownEndsAt = null;
         this.demo = null;
         this.phase = 'revealed';
-        this.outcome = { winnerId, moves };
+        this.outcome = { winnerId, moves, winningRobots };
         this.changed();
     }
 

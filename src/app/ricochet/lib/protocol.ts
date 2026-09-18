@@ -15,7 +15,9 @@ export type BidInfo = { playerId: string; moves: number };
 export type DemoInfo = { playerId: string; bid: number; robots: Robots; movesMade: number; endsAt: number };
 
 // `solution` is only sent once the round is over, so clients can't peek at it.
-export type RoundOutcome = { winnerId: string | null; moves: number | null; solution: OptimalPathStep[] };
+// `winningRobots` is the board after the winning move (null if nobody won), since the
+// round ends on that move and no demo snapshot with it applied is ever broadcast.
+export type RoundOutcome = { winnerId: string | null; moves: number | null; winningRobots: Robots | null; solution: OptimalPathStep[] };
 
 export type LobbySnapshot = {
     code: string;

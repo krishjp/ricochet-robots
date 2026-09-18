@@ -107,7 +107,7 @@ describe('bidding', () => {
         await startThinking(lobby, ids[0]);
         expect(lobby.skipRound(ids[1], 1)).toMatchObject({ ok: false });
         expect(lobby.skipRound(ids[0], 1)).toEqual({ ok: true });
-        expect(lobby.snapshot().outcome).toEqual({ winnerId: null, moves: null, solution: puzzle.solution.path });
+        expect(lobby.snapshot().outcome).toEqual({ winnerId: null, moves: null, winningRobots: null, solution: puzzle.solution.path });
     });
 });
 
@@ -136,7 +136,12 @@ describe('demonstrating', () => {
 
         const snapshot = lobby.snapshot();
         expect(snapshot.phase).toBe('revealed');
-        expect(snapshot.outcome).toEqual({ winnerId: ids[0], moves: 1, solution: puzzle.solution.path });
+        expect(snapshot.outcome).toEqual({
+            winnerId: ids[0],
+            moves: 1,
+            winningRobots: { ...state.robots, red: { color: 'red', ...WINNING_MOVE.to } },
+            solution: puzzle.solution.path,
+        });
         expect(snapshot.players[0].score).toBe(1);
     });
 

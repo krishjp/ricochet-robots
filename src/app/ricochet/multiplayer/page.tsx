@@ -1,9 +1,10 @@
 // /app/ricochet/multiplayer/page.tsx
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Dices, Users } from 'lucide-react';
+import { CheckCircle2, Dices, Users } from 'lucide-react';
 
 import { styles } from '../../styles/ricochet-styles';
+import { orbitron } from '../lib/types';
 import Header from '../components/Header';
 import HowToPlayModal from '../components/Info';
 import Board from '../components/Board';
@@ -18,8 +19,10 @@ import { ROBOT_COLORS } from '../lib/constants';
 import { useLobby } from '../lib/useLobby';
 import { usePathPlayback } from '../lib/usePathPlayback';
 
-// Pause on the winning move before replaying the optimal route from the start.
-const REVEAL_DELAY_MS = 1500;
+// How long the solved board stays up (winning move's slide included) before the optimal route replays.
+const SOLVED_HOLD_MS = 3000;
+// Shorter pause when nobody solved it, since there's no winning board to look at.
+const UNSOLVED_HOLD_MS = 1500;
 
 type Lobby = ReturnType<typeof useLobby>;
 
@@ -83,14 +86,14 @@ function Round({ lobby, snapshot, playerId }: { lobby: Lobby; snapshot: LobbySna
     useEffect(() => {
         if (phase !== 'revealed' || autoPlayedRef.current) return;
         autoPlayedRef.current = true;
-        replay(REVEAL_DELAY_MS);
-    }, [phase, replay]);
+        replay(outcome?.winnerId ? SOLVED_HOLD_MS : UNSOLVED_HOLD_MS);
+    }, [phase, outcome, replay]);
 
     let robots: Robots | null = null;
     if (puzzle) {
         if (phase === 'thinking') robots = practiceRobots;
         else if (phase === 'demonstrating') robots = demo?.robots ?? puzzle.robots;
-        else if (phase === 'revealed') robots = playback.robots ?? lastDemoRobots ?? puzzle.robots;
+        else if (phase === 'revealed') robots = playback.robots ?? outcome?.winningRobots ?? lastDemoRobots ?? puzzle.robots;
     }
 
     const practiceSolved = !!(phase === 'thinking' && puzzle && practiceRobots
@@ -120,6 +123,11 @@ function Round({ lobby, snapshot, playerId }: { lobby: Lobby; snapshot: LobbySna
         setSelectedRobot(null);
     };
 
+    // Shown on the winning board until the optimal-route replay takes over.
+    const solvedBanner = phase === 'revealed' && outcome?.winnerId && !playback.robots
+        ? `${outcome.winnerId === playerId ? 'You' : snapshot.players.find(p => p.id === outcome.winnerId)?.name ?? 'A player'} solved it in ${outcome.moves} ${outcome.moves === 1 ? 'move' : 'moves'}!`
+        : null;
+
     const possibleMoves = interactive && selectedRobot && robots && puzzle && !(phase === 'thinking' && practiceSolved)
         ? calculateMoves(robots[selectedRobot], robots, puzzle.walls)
         : [];
@@ -142,6 +150,11 @@ function Round({ lobby, snapshot, playerId }: { lobby: Lobby; snapshot: LobbySna
                             selectedRobot={interactive ? selectedRobot : null}
                             onRobotClick={handleCellClick}
                         />
+                        {solvedBanner && (
+                            <div className={`${styles.solvedBanner} ${orbitron.className}`} role="status">
+                                <CheckCircle2 size={22} /> {solvedBanner}
+                            </div>
+                        )}
                     </>
                 ) : (
                     <div className={styles.boardPlaceholder}>
