@@ -1,0 +1,17 @@
+# Render Blueprint for the multiplayer lobby server (server/). The Next.js app stays on Vercel.
+# Lobbies live in memory, so keep this to a single instance.
+services:
+  - type: web
+    name: ricochet-robots-multiplayer
+    runtime: node
+    plan: free
+    # Dev dependencies are needed for the esbuild step.
+    buildCommand: npm ci --include=dev && npm run build:server
+    startCommand: npm run start:server
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Comma-separated origins allowed to connect, e.g. https://your-app.vercel.app
+      - key: CLIENT_ORIGIN
+        sync: false
