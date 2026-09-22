@@ -38,7 +38,6 @@ export default function RicochetRobotsPage() {
     const [showHelp, setShowHelp] = useState<boolean>(false);
 
     const animationRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
     const stopAnimation = useCallback(() => {
         if (animationRef.current) clearInterval(animationRef.current);
@@ -133,30 +132,6 @@ export default function RicochetRobotsPage() {
         if (newPos) handleMove(newPos);
     }, [selectedRobot, gameState, solved, isAnimating]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const SWIPE_THRESHOLD_PX = 24;
-
-    const handleBoardTouchStart = (e: React.TouchEvent) => {
-        const touch = e.touches[0];
-        touchStartRef.current = { x: touch.clientX, y: touch.clientY };
-    };
-
-    const handleBoardTouchEnd = (e: React.TouchEvent) => {
-        const start = touchStartRef.current;
-        touchStartRef.current = null;
-        if (!start) return;
-
-        const touch = e.changedTouches[0];
-        const dx = touch.clientX - start.x;
-        const dy = touch.clientY - start.y;
-
-        if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_THRESHOLD_PX) return;
-
-        const direction: Direction = Math.abs(dx) > Math.abs(dy)
-            ? (dx > 0 ? 'east' : 'west')
-            : (dy > 0 ? 'south' : 'north');
-        handleDirectionalMove(direction);
-    };
-
     useEffect(() => {
         const KEY_TO_DIRECTION: Record<string, Direction> = {
             ArrowUp: 'north', ArrowRight: 'east', ArrowDown: 'south', ArrowLeft: 'west',
@@ -237,11 +212,7 @@ export default function RicochetRobotsPage() {
 
                 return (
                     <main className={styles.mainContainer} onClick={(e) => { if (e.target === e.currentTarget) setSelectedRobot(null); }}>
-                        <div
-                            className="relative w-full max-w-lg lg:max-w-xl xl:max-w-2xl aspect-square"
-                            onTouchStart={handleBoardTouchStart}
-                            onTouchEnd={handleBoardTouchEnd}
-                        >
+                        <div className="relative w-full max-w-lg lg:max-w-xl xl:max-w-2xl aspect-square">
                             <Board
                                 walls={gameState.walls}
                                 target={gameState.target}
