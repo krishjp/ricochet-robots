@@ -2,8 +2,8 @@
 import type { Walls, Robot, Robots, OptimalPathStep, Position, TargetChip, SolveResult } from './types';
 import { ROBOT_COLORS, BOARD_SIZE } from './constants';
 
-type Direction = 'north' | 'east' | 'south' | 'west';
-const DIRECTIONS: readonly Direction[] = ['north', 'east', 'south', 'west'];
+export type Direction = 'north' | 'east' | 'south' | 'west';
+export const DIRECTIONS: readonly Direction[] = ['north', 'east', 'south', 'west'];
 const DELTA: Record<Direction, Position> = { north: { x: 0, y: -1 }, east: { x: 1, y: 0 }, south: { x: 0, y: 1 }, west: { x: -1, y: 0 } };
 const OPPOSITE: Record<Direction, Direction> = { north: 'south', east: 'west', south: 'north', west: 'east' };
 

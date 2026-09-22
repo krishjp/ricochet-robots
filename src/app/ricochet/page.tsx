@@ -14,7 +14,7 @@ import Panel from './components/Panel';
 // Logic, Types, & Constants
 import { GameState, Robots, OptimalPathStep, RobotColor, Position, SolveResult, SolverResponse } from './lib/types';
 import { encodeGameId, decodeGameId } from './lib/gameId';
-import { calculateMoves } from './lib/solver';
+import { calculateMoves, moveLogic, Direction } from './lib/solver';
 import { useSolverWorker } from './lib/useSolverWorker';
 import { ROBOT_COLORS, ANIMATION_DURATION_MS } from './lib/constants';
 
@@ -38,6 +38,7 @@ export default function RicochetRobotsPage() {
     const [showHelp, setShowHelp] = useState<boolean>(false);
 
     const animationRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
     const stopAnimation = useCallback(() => {
         if (animationRef.current) clearInterval(animationRef.current);
@@ -125,6 +126,54 @@ export default function RicochetRobotsPage() {
         }
     };
 
+    const handleDirectionalMove = useCallback((direction: Direction) => {
+        if (!selectedRobot || !gameState || solved || isAnimating) return;
+        const robot = gameState.robots[selectedRobot];
+        const newPos = moveLogic(robot.x, robot.y, direction, gameState.robots, gameState.walls);
+        if (newPos) handleMove(newPos);
+    }, [selectedRobot, gameState, solved, isAnimating]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const SWIPE_THRESHOLD_PX = 24;
+
+    const handleBoardTouchStart = (e: React.TouchEvent) => {
+        const touch = e.touches[0];
+        touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    };
+
+    const handleBoardTouchEnd = (e: React.TouchEvent) => {
+        const start = touchStartRef.current;
+        touchStartRef.current = null;
+        if (!start) return;
+
+        const touch = e.changedTouches[0];
+        const dx = touch.clientX - start.x;
+        const dy = touch.clientY - start.y;
+
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_THRESHOLD_PX) return;
+
+        const direction: Direction = Math.abs(dx) > Math.abs(dy)
+            ? (dx > 0 ? 'east' : 'west')
+            : (dy > 0 ? 'south' : 'north');
+        handleDirectionalMove(direction);
+    };
+
+    useEffect(() => {
+        const KEY_TO_DIRECTION: Record<string, Direction> = {
+            ArrowUp: 'north', ArrowRight: 'east', ArrowDown: 'south', ArrowLeft: 'west',
+            w: 'north', d: 'east', s: 'south', a: 'west',
+        };
+        const onKeyDown = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+            const direction = KEY_TO_DIRECTION[e.key];
+            if (!direction) return;
+            e.preventDefault();
+            handleDirectionalMove(direction);
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [handleDirectionalMove]);
+
     const resetRound = () => {
         if (!initialRobots || isAnimating) return;
         setGameState(prev => ({ ...prev!, robots: initialRobots }));
@@ -188,7 +237,11 @@ export default function RicochetRobotsPage() {
 
                 return (
                     <main className={styles.mainContainer} onClick={(e) => { if (e.target === e.currentTarget) setSelectedRobot(null); }}>
-                        <div className="relative w-full max-w-lg lg:max-w-xl xl:max-w-2xl aspect-square">
+                        <div
+                            className="relative w-full max-w-lg lg:max-w-xl xl:max-w-2xl aspect-square"
+                            onTouchStart={handleBoardTouchStart}
+                            onTouchEnd={handleBoardTouchEnd}
+                        >
                             <Board
                                 walls={gameState.walls}
                                 target={gameState.target}
