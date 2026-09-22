@@ -11,20 +11,20 @@ export const colors = {
 
 export const styles = {
     // Main Layout
-    mainContainer: "flex flex-col lg:flex-row items-center justify-center min-h-screen bg-slate-100 p-4 gap-8 text-slate-800",
+    mainContainer: "flex flex-col lg:flex-row items-center justify-center min-h-screen bg-slate-100 p-2 gap-4 sm:p-4 sm:gap-8 text-slate-800 touch-manipulation",
     loadingContainer: "flex items-center justify-center min-h-screen bg-slate-100 text-slate-800",
     loadingSpinner: "w-16 h-16 animate-spin text-slate-500",
 
     // Board
-    boardContainer: "grid grid-cols-16 border-2 border-slate-400 aspect-square w-full max-w-lg lg:max-w-xl xl:max-w-2xl bg-white shadow-2xl",
+    boardContainer: "grid grid-cols-16 border-2 border-slate-400 aspect-square w-full max-w-lg lg:max-w-xl xl:max-w-2xl bg-white shadow-2xl touch-manipulation select-none",
     cell: "aspect-square flex items-center justify-center relative",
-    
+
     // Game Pieces
     robotContainer: "absolute transition-all ease-in-out duration-200",
-    robotIcon: (color: keyof typeof colors, isSelected: boolean) => 
+    robotIcon: (color: keyof typeof colors, isSelected: boolean) =>
         `w-full h-full transition-transform duration-200 ${colors[color].text} ${isSelected ? 'scale-110' : ''}`,
     target: (color: keyof typeof colors) => `w-3/4 h-3/4 ${colors[color].target}`,
-    moveIndicator: "absolute w-1/3 h-1/3 bg-yellow-400/70 rounded-full cursor-pointer animate-pulse",
+    moveIndicator: "absolute inset-[8%] rounded-full border-[3px] border-yellow-500 bg-yellow-400/40 cursor-pointer animate-pulse",
 
     // UI Panel
     panelContainer: "w-full lg:w-80 flex flex-col gap-4",
