@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { Target, Bot, Copy, Crown, WifiOff, Play, SkipForward, Lock, RotateCcw, Loader2, LogOut, Trophy, Sparkles, X } from 'lucide-react';
+import { Target, Bot, Copy, Crown, WifiOff, Play, SkipForward, Lock, RotateCcw, Undo2, Loader2, LogOut, Trophy, Sparkles, X } from 'lucide-react';
 import { orbitron } from '../lib/types';
 import type { LobbySnapshot } from '../lib/protocol';
 import { LOCK_IN_COUNTDOWN_MS, MAX_PLAYERS, MAX_ROUTE_MOVES } from '../lib/constants';
@@ -23,6 +23,7 @@ interface MultiplayerPanelProps {
     onStart: () => void;
     onSkip: () => void;
     onLockIn: () => void;
+    onUndoLocal: () => void;
     onResetLocal: () => void;
     onShowSolution: () => void;
     onReplay: (which: 'winner' | 'optimal') => void;
@@ -88,7 +89,7 @@ export default function MultiplayerPanel(props: MultiplayerPanelProps) {
     );
 }
 
-function PhaseStatus({ snapshot, playerId, clockOffset, localMoves, localSolved, replaying, onStart, onSkip, onLockIn, onResetLocal, onShowSolution, onReplay }: MultiplayerPanelProps) {
+function PhaseStatus({ snapshot, playerId, clockOffset, localMoves, localSolved, replaying, onStart, onSkip, onLockIn, onUndoLocal, onResetLocal, onShowSolution, onReplay }: MultiplayerPanelProps) {
     const countdown = useCountdown(snapshot.countdownEndsAt, clockOffset);
 
     const isHost = snapshot.hostId === playerId;
@@ -129,17 +130,20 @@ function PhaseStatus({ snapshot, playerId, clockOffset, localMoves, localSolved,
 
                     <div className="flex items-center justify-between mb-3">
                         <span className={`${orbitron.className}`}>Your route: <span className="text-slate-600">{localMoves} / {MAX_ROUTE_MOVES}</span></span>
-                        <button onClick={onResetLocal} className={`${styles.buttonBase} ${styles.buttonBlue} py-1 text-sm`}><RotateCcw size={14} /> Reset</button>
+                        <div className="flex gap-2">
+                            <button onClick={onUndoLocal} disabled={localMoves === 0} className={`${styles.buttonBase} ${styles.buttonSlate} ${styles.buttonDisabled} py-1 text-sm`}><Undo2 size={14} /> Undo</button>
+                            <button onClick={onResetLocal} disabled={localMoves === 0} className={`${styles.buttonBase} ${styles.buttonBlue} ${styles.buttonDisabled} py-1 text-sm`}><RotateCcw size={14} /> Reset</button>
+                        </div>
                     </div>
                     {localSolved ? (
                         <>
                             <button onClick={onLockIn} disabled={!improves} className={`${styles.buttonBase} ${styles.buttonGreen} ${styles.buttonDisabled} w-full mb-2`}>
                                 <Lock size={18} /> Lock in {plural(localMoves)}
                             </button>
-                            {!improves && <p className="text-sm text-slate-500">Reset and find a route shorter than {plural(myLockIn!.moves)} to improve your lock-in.</p>}
+                            {!improves && <p className="text-sm text-slate-500">Undo or reset and find a route shorter than {plural(myLockIn!.moves)} to improve your lock-in.</p>}
                         </>
                     ) : localMoves >= MAX_ROUTE_MOVES ? (
-                        <p className="text-sm text-slate-500">Routes are limited to {MAX_ROUTE_MOVES} moves. Reset to try another route.</p>
+                        <p className="text-sm text-slate-500">Routes are limited to {MAX_ROUTE_MOVES} moves. Undo a move or reset to keep trying.</p>
                     ) : (
                         <p className="text-sm text-slate-500">Move the robots on your board. Once the target robot reaches the target, lock in your route.</p>
                     )}

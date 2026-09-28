@@ -120,6 +120,17 @@ function Round({ lobby, snapshot, playerId }: { lobby: Lobby; snapshot: LobbySna
         setSelectedRobot(null);
     };
 
+    // Takes back the last move by replaying the rest of the route from the starting position.
+    const undoPractice = () => {
+        if (!puzzle || practiceRoute.length === 0) return;
+        const route = practiceRoute.slice(0, -1);
+        setPracticeRoute(route);
+        setPracticeRobots(route.reduce<Robots>(
+            (robots, { color, pos }) => ({ ...robots, [color]: { ...robots[color], ...pos } }),
+            puzzle.robots,
+        ));
+    };
+
     const nameOf = (id: string | null) => snapshot.players.find(p => p.id === id)?.name ?? 'A player';
     let banner: { text: string; optimal: boolean } | null = null;
     if (phase === 'revealed' && outcome) {
@@ -179,6 +190,7 @@ function Round({ lobby, snapshot, playerId }: { lobby: Lobby; snapshot: LobbySna
                 onStart={lobby.startRound}
                 onSkip={lobby.skipRound}
                 onLockIn={() => lobby.lockInRoute(practiceRoute)}
+                onUndoLocal={undoPractice}
                 onResetLocal={resetPractice}
                 onShowSolution={lobby.showSolution}
                 onReplay={which => playRoute(which)}
