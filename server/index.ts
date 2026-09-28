@@ -141,9 +141,8 @@ io.on('connection', (socket: GameSocket) => {
     // which is also what breaks ties between equal lock-ins. Clients' clocks are never trusted.
     socket.on('round:start', (payload, ack) => act(ack, (lobby, id) => lobby.startRound(id, payload?.round)));
     socket.on('round:skip', (payload, ack) => act(ack, (lobby, id) => lobby.skipRound(id, payload?.round)));
-    socket.on('bid:place', (payload, ack) => act(ack, (lobby, id) => lobby.placeBid(id, payload?.round, payload?.moves)));
-    socket.on('demo:move', (payload, ack) => act(ack, (lobby, id) => lobby.demoMove(id, payload?.round, payload?.moveIndex, payload?.color, payload?.to)));
-    socket.on('demo:forfeit', (payload, ack) => act(ack, (lobby, id) => lobby.forfeitDemo(id, payload?.round)));
+    socket.on('route:lockIn', (payload, ack) => act(ack, (lobby, id) => lobby.lockInRoute(id, payload?.round, payload?.route)));
+    socket.on('solution:show', (payload, ack) => act(ack, (lobby, id) => lobby.showSolution(id, payload?.round)));
 
     socket.on('disconnect', () => {
         const current = seat();

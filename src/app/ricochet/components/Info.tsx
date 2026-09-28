@@ -1,7 +1,7 @@
 // /app/ricochet/components/HowToPlayModal.tsx
 'use client';
 import { X, Bot, Target, Dices, ArrowRight, Users } from 'lucide-react';
-import { BID_COUNTDOWN_MS, DEMO_TIME_LIMIT_MS, MAX_PLAYERS } from '../lib/constants';
+import { LOCK_IN_COUNTDOWN_MS, MAX_PLAYERS, MAX_ROUTE_MOVES } from '../lib/constants';
 import { orbitron } from '../lib/types';
 
 interface HowToPlayModalProps {
@@ -68,11 +68,10 @@ export default function HowToPlayModal({ onClose }: HowToPlayModalProps) {
                     </h3>
                     <ul className="text-slate-300 leading-relaxed list-disc list-inside space-y-1">
                         <li>Create a lobby and share its code or invite link. Up to {MAX_PLAYERS} players can join.</li>
-                        <li>Everyone gets the same puzzle. Your practice moves are private. When you find a solution, lock in its move count.</li>
-                        <li>The first lock-in starts a {BID_COUNTDOWN_MS / 1000} second timer. Until it runs out, anyone can lock in, and you can lower your own number.</li>
-                        <li>Equal numbers are allowed. Whoever locked in first goes first.</li>
-                        <li>When time&apos;s up, the lowest lock-in has {DEMO_TIME_LIMIT_MS / 1000} seconds to play their solution for everyone, in no more moves than they locked in. If they fail, the next-lowest player gets a turn.</li>
-                        <li>A successful demonstration scores a point, and then everyone sees the optimal route.</li>
+                        <li>Everyone gets the same puzzle, and your board is private. Once your target robot reaches the target, lock in the route you played (up to {MAX_ROUTE_MOVES} moves).</li>
+                        <li>The first lock-in starts a {LOCK_IN_COUNTDOWN_MS / 1000} second timer. Until it runs out, anyone can lock in, and you can replace your route with a shorter one.</li>
+                        <li>When time&apos;s up, the shortest route scores a point. Among equal routes, whoever locked in first wins.</li>
+                        <li>Everyone then watches the winning route, and the host can reveal the optimal route.</li>
                     </ul>
                 </section>
             </div>

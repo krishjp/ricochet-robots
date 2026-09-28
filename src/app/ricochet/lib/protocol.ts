@@ -1,23 +1,28 @@
 // /app/ricochet/lib/protocol.ts
 // Socket.IO messages between the multiplayer page and the lobby server (server/).
 // Type-only imports: the server bundles this file, and types.ts loads next/font.
-import type { GameState, OptimalPathStep, Position, RobotColor, Robots } from './types';
+import type { GameState, OptimalPathStep } from './types';
 
-// waiting → generating → thinking → demonstrating → revealed → (next round) generating …
-// `demonstrating` is skipped when nobody locks in before the host skips the puzzle.
-export type LobbyPhase = 'waiting' | 'generating' | 'thinking' | 'demonstrating' | 'revealed';
+// waiting → generating → thinking → revealed → (next round) generating …
+export type LobbyPhase = 'waiting' | 'generating' | 'thinking' | 'revealed';
 
 export type PlayerInfo = { id: string; name: string; score: number; connected: boolean };
 
-// Listed in demonstration order: fewest moves first, and earlier lock-ins first among equal bids.
-export type BidInfo = { playerId: string; moves: number };
+// One robot move: which robot, and the cell it slides to. Routes and solutions are lists of these.
+export type RouteStep = OptimalPathStep;
 
-export type DemoInfo = { playerId: string; bid: number; robots: Robots; movesMade: number; endsAt: number };
+// Listed in ranking order: fewest moves first, and earlier lock-ins first among equal lengths.
+// Only the length is public while the round is running; the routes themselves stay on the server.
+export type LockInInfo = { playerId: string; moves: number };
 
-// `solution` is only sent once the round is over, so clients can't peek at it.
-// `winningRobots` is the board after the winning move (null if nobody won), since the
-// round ends on that move and no demo snapshot with it applied is ever broadcast.
-export type RoundOutcome = { winnerId: string | null; moves: number | null; winningRobots: Robots | null; solution: OptimalPathStep[] };
+// `winningRoute` is the best locked-in route (null if nobody locked in). `solution` is the optimal
+// route, which stays hidden until the host chooses to show it.
+export type RoundOutcome = {
+    winnerId: string | null;
+    moves: number | null;
+    winningRoute: RouteStep[] | null;
+    solution: RouteStep[] | null;
+};
 
 export type LobbySnapshot = {
     code: string;
@@ -26,11 +31,9 @@ export type LobbySnapshot = {
     phase: LobbyPhase;
     roundNumber: number;
     puzzle: GameState | null;
-    bids: BidInfo[];
+    lockIns: LockInInfo[];
     // Timestamps are in server time; clients correct for clock skew using `serverTime`.
     countdownEndsAt: number | null;
-    failedPlayerIds: string[];
-    demo: DemoInfo | null;
     outcome: RoundOutcome | null;
     serverTime: number;
 };
@@ -42,8 +45,7 @@ export type Session = { code: string; playerId: string; token: string };
 type Ack<T> = (result: T) => void;
 
 // Round actions carry the `roundNumber` the client was looking at, so a late or retried message
-// can't land on a newer round. Demo moves also carry `moveIndex` (the move count the client
-// saw), so a double-click can't apply a second move computed from a stale board.
+// can't land on a newer round.
 type RoundRef = { round: number };
 
 export interface ClientToServerEvents {
@@ -54,9 +56,10 @@ export interface ClientToServerEvents {
     'lobby:leave': (ack: Ack<ActionResult>) => void;
     'round:start': (payload: RoundRef, ack: Ack<ActionResult>) => void;
     'round:skip': (payload: RoundRef, ack: Ack<ActionResult>) => void;
-    'bid:place': (payload: RoundRef & { moves: number }, ack: Ack<ActionResult>) => void;
-    'demo:move': (payload: RoundRef & { moveIndex: number; color: RobotColor; to: Position }, ack: Ack<ActionResult>) => void;
-    'demo:forfeit': (payload: RoundRef, ack: Ack<ActionResult>) => void;
+    // Locks in a full route from the puzzle's starting position. The server replays and validates it.
+    'route:lockIn': (payload: RoundRef & { route: RouteStep[] }, ack: Ack<ActionResult>) => void;
+    // Host only, once the round is over: reveals the optimal route to everyone.
+    'solution:show': (payload: RoundRef, ack: Ack<ActionResult>) => void;
 }
 
 export interface ServerToClientEvents {

@@ -47,24 +47,23 @@ The main thread never generates or solves puzzles.
 - **Replacing a job:** `useSolverWorker` delivers only the latest job's result. If a new job starts while the worker is busy, it terminates the worker and starts a fresh one.
 
 Keep everything the worker imports free of browser-only and `next/font` code. Use `import type` when a worker-side module imports from `types.ts`, because `types.ts` loads `next/font`.
-- `src/app/styles/ricochet-styles.ts` centralizes the Tailwind class strings (`styles.*` and the per-color `colors` map). Put new styling there instead of inline in the components. `grid-cols-16` is a custom utility defined in `tailwind.config.ts`.
+- `src/app/styles/ricochet-styles.ts` centralizes the Tailwind class strings (`styles.*` and the per-color `colors` map). Put new styling there instead of inline in the components. `grid-cols-16` and `grid-rows-16` are custom utilities defined in `tailwind.config.ts`.
 
 ### Multiplayer
 
-The server is authoritative. It generates each puzzle, keeps the solution secret until the round ends, validates every demonstrated move with `calculateMoves`, and broadcasts a full `LobbySnapshot` after every change. Clients render what the snapshot says. The only client-only state is each player's private practice board during the thinking phase.
+The server is authoritative. It generates each puzzle, keeps the optimal solution secret until the host reveals it, replays every locked-in route with `calculateMoves` (`validateRoute`), and broadcasts a full `LobbySnapshot` after every change. Clients render what the snapshot says. The only client-only state is each player's private practice board and route during the thinking phase, plus local playback.
 
 - `src/app/ricochet/lib/protocol.ts`: the typed Socket.IO events and snapshot shape shared by the client and the server. It uses type-only imports, like everything else the server bundles.
-- `server/lobby.ts`: the `Lobby` class, a pure state machine with no sockets that is unit-tested with fake timers. The round flow is `waiting → generating → thinking → demonstrating → revealed`.
-  - **Thinking:** players lock in a move count. The first lock-in starts `BID_COUNTDOWN_MS`. A player can only lower their own lock-in, and a lowered lock-in counts as a new one.
-  - **Demonstrating:** bids are ordered by fewest moves, then by lock-in order. Each bidder gets `DEMO_TIME_LIMIT_MS` to reach the target in no more moves than they locked in. Running out of moves, running out of time, forfeiting, or being offline when the turn comes passes the turn to the next bidder.
-  - **Revealed:** a successful demonstration scores 1 point. In every case the optimal solution is then revealed.
-  - **Host:** the host is the earliest-joined connected player. Only the host can start or skip a round.
+- `server/lobby.ts`: the `Lobby` class, a pure state machine with no sockets that is unit-tested with fake timers. The round flow is `waiting → generating → thinking → revealed`.
+  - **Thinking:** players solve the puzzle on their private board and lock in the full route (at most `MAX_ROUTE_MOVES`, which is `MAX_SOLUTION_MOVES + 8`). The server rejects a route unless every move is legal and it ends with the target robot on the target. The first lock-in starts `LOCK_IN_COUNTDOWN_MS`. A player can only replace their route with a shorter one, and a replacement counts as a new lock-in. Only route lengths appear in snapshots until the round ends.
+  - **Revealed:** when the countdown ends, the shortest route (earliest lock-in among equals) scores 1 point, even if its player has gone offline. The snapshot then carries the winning route, which every client plays back. The optimal solution (`outcome.solution`) stays `null` until the host calls `showSolution`, and then every client plays it.
+  - **Host:** the host is the earliest-joined connected player. Only the host can start or skip a round, or show the optimal solution.
 - `server/index.ts`: Socket.IO wiring, lobby codes, and seat ownership.
   - Each player holds a secret `token`. The client keeps it in `sessionStorage` and uses it to rejoin after a reconnect or reload.
   - A newer socket for the same player takes the seat over and sends the old socket `lobby:ended`.
   - A disconnected player keeps their seat for `RECONNECT_GRACE_MS`.
 - `server/generatePuzzle.ts` runs `generateSolvablePuzzle` on a `worker_threads` worker (`server/puzzleWorker.ts`) so generation doesn't block other lobbies. The worker path uses the running file's extension, `.ts` under tsx and `.js` in the bundle.
-- Client: `useLobby` (socket connection, rejoin, and actions), `useCountdown` (converts server deadlines to local time using `serverTime`), `usePathPlayback` (plays back the revealed solution), and the components `LobbyEntry` and `MultiplayerPanel`.
+- Client: `useLobby` (socket connection, rejoin, and actions), `useCountdown` (converts server deadlines to local time using `serverTime`), `usePathPlayback` (plays back the winning and optimal routes), and the components `LobbyEntry` and `MultiplayerPanel`.
 - Deployment: `render.yaml` defines the Render web service. Set `CLIENT_ORIGIN` on Render to the site's origin(s), comma-separated, for CORS. Set `NEXT_PUBLIC_MULTIPLAYER_URL` on Vercel to the Render URL; it defaults to `http://localhost:3001`. Lobbies live in memory, so run exactly one instance. A restart or a free-plan spin-down ends every lobby.
 
 ### Board model

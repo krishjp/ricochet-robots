@@ -2,9 +2,9 @@
 // Socket handling lives in index.ts; this module only sees player ids and connection ids.
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { GameState, Position, RobotColor, Robots, SolveResult } from '../src/app/ricochet/lib/types';
-import type { ActionResult, LobbyPhase, LobbySnapshot } from '../src/app/ricochet/lib/protocol';
+import type { ActionResult, LobbyPhase, LobbySnapshot, RouteStep } from '../src/app/ricochet/lib/protocol';
 import {
-    BID_COUNTDOWN_MS, BOARD_SIZE, DEMO_TIME_LIMIT_MS, MAX_BID_MOVES, MAX_NAME_LENGTH, MAX_PLAYERS,
+    BOARD_SIZE, LOCK_IN_COUNTDOWN_MS, MAX_NAME_LENGTH, MAX_PLAYERS, MAX_ROUTE_MOVES,
     RECONNECT_GRACE_MS, ROBOT_COLORS,
 } from '../src/app/ricochet/lib/constants';
 import { calculateMoves } from '../src/app/ricochet/lib/solver';
@@ -29,9 +29,8 @@ type Player = {
     removeTimer: ReturnType<typeof setTimeout> | null;
 };
 
-// `seq` orders lock-ins, so equal bids are demonstrated first-come, first-served.
-type Bid = { playerId: string; moves: number; seq: number };
-type Demo = { bid: Bid; robots: Robots; movesMade: number; endsAt: number };
+// `seq` orders lock-ins, so equal-length routes rank first-come, first-served.
+type LockIn = { playerId: string; route: RouteStep[]; seq: number };
 
 const ok: ActionResult = { ok: true };
 const STALE_ROUND = 'That round is already over.';
@@ -48,18 +47,43 @@ const isPosition = (p: unknown): p is Position => {
     return Number.isInteger(x) && Number.isInteger(y) && x! >= 0 && y! >= 0 && x! < BOARD_SIZE && y! < BOARD_SIZE;
 };
 
+// Replays an untrusted route from the puzzle's start. Returns a clean copy of the route if every move
+// is legal and it ends with the target robot on the target, otherwise an error for the player.
+export const validateRoute = (state: GameState, route: unknown): { ok: true; route: RouteStep[] } | { ok: false; error: string } => {
+    if (!Array.isArray(route) || route.length === 0) return fail('Submit the moves of your route.');
+    if (route.length > MAX_ROUTE_MOVES) return fail(`Routes can be at most ${MAX_ROUTE_MOVES} moves long.`);
+
+    let robots: Robots = state.robots;
+    const cleaned: RouteStep[] = [];
+    for (const step of route) {
+        const { color, pos } = (step ?? {}) as Partial<RouteStep>;
+        if (!ROBOT_COLORS.includes(color as RobotColor) || !isPosition(pos)) return fail('That route is not valid.');
+        const robotColor = color as RobotColor;
+        const legal = calculateMoves(robots[robotColor], robots, state.walls).some(p => p.x === pos.x && p.y === pos.y);
+        if (!legal) return fail('That route contains a move the rules do not allow.');
+        robots = { ...robots, [robotColor]: { color: robotColor, x: pos.x, y: pos.y } };
+        cleaned.push({ color: robotColor, pos: { x: pos.x, y: pos.y } });
+    }
+
+    const { target } = state;
+    if (robots[target.color].x !== target.x || robots[target.color].y !== target.y) {
+        return fail('That route does not get the target robot to the target.');
+    }
+    return { ok: true, route: cleaned };
+};
+
 export class Lobby {
     private players: Player[] = []; // join order
     private phase: LobbyPhase = 'waiting';
     private roundNumber = 0;
     private puzzle: Puzzle | null = null;
-    private bids: Bid[] = []; // kept in demonstration order
-    private bidSeq = 0;
+    private lockIns: LockIn[] = []; // kept in ranking order
+    private lockInSeq = 0;
     private countdownEndsAt: number | null = null;
-    private failed: string[] = [];
-    private demo: Demo | null = null;
-    private outcome: { winnerId: string | null; moves: number | null; winningRobots: Robots | null } | null = null;
-    // The bid countdown or the current demonstration's time limit; never both at once.
+    private outcome: { winnerId: string | null; route: RouteStep[] | null } | null = null;
+    // Set once the host shows the optimal route after the round ends.
+    private solutionShown = false;
+    // The lock-in countdown.
     private timer: ReturnType<typeof setTimeout> | null = null;
     private disposed = false;
 
@@ -134,73 +158,50 @@ export class Lobby {
         return ok;
     }
 
-    // Ends a puzzle nobody has locked in on, revealing the solution without awarding a point.
+    // Ends a puzzle nobody has locked in on, without awarding a point. The host can then show the solution.
     skipRound(playerId: string, round: unknown): ActionResult {
         if (playerId !== this.hostId) return fail('Only the host can skip a puzzle.');
         if (round !== this.roundNumber) return fail(STALE_ROUND);
-        if (this.phase !== 'thinking' || this.bids.length > 0) return fail('The puzzle can only be skipped before anyone locks in.');
-        this.reveal(null, null);
+        if (this.phase !== 'thinking' || this.lockIns.length > 0) return fail('The puzzle can only be skipped before anyone locks in.');
+        this.reveal(null);
         return ok;
     }
 
-    placeBid(playerId: string, round: unknown, moves: unknown): ActionResult {
+    lockInRoute(playerId: string, round: unknown, route: unknown): ActionResult {
         if (round !== this.roundNumber) return fail(STALE_ROUND);
-        if (this.phase !== 'thinking') return fail('Lock-ins are closed for this round.');
-        if (typeof moves !== 'number' || !Number.isInteger(moves) || moves < 1 || moves > MAX_BID_MOVES) {
-            return fail(`Lock in a whole number of moves from 1 to ${MAX_BID_MOVES}.`);
-        }
-        const existing = this.bids.find(b => b.playerId === playerId);
-        // A repeat of the same lock-in (double-click, retry) keeps its original place in line.
-        if (existing?.moves === moves) return ok;
-        if (existing && moves > existing.moves) return fail(`You already locked in ${existing.moves}; you can only lower it.`);
+        if (this.phase !== 'thinking' || !this.puzzle) return fail('Lock-ins are closed for this round.');
+        const result = validateRoute(this.puzzle.state, route);
+        if (!result.ok) return result;
 
-        // A lowered bid counts as a new lock-in, so it goes behind earlier bids of the same number.
-        this.bids = this.bids.filter(b => b.playerId !== playerId);
-        this.bids.push({ playerId, moves, seq: ++this.bidSeq });
-        this.bids.sort((a, b) => a.moves - b.moves || a.seq - b.seq);
+        const moves = result.route.length;
+        const existing = this.lockIns.find(l => l.playerId === playerId);
+        // A repeat of the same length (double-click, retry) keeps the original route and place in line.
+        if (existing?.route.length === moves) return ok;
+        if (existing && moves > existing.route.length) {
+            return fail(`You already locked in ${existing.route.length} moves; only a shorter route can replace it.`);
+        }
+
+        // A shorter route counts as a new lock-in, so it goes behind earlier routes of the same length.
+        this.lockIns = this.lockIns.filter(l => l.playerId !== playerId);
+        this.lockIns.push({ playerId, route: result.route, seq: ++this.lockInSeq });
+        this.lockIns.sort((a, b) => a.route.length - b.route.length || a.seq - b.seq);
 
         if (this.countdownEndsAt === null) {
-            this.countdownEndsAt = Date.now() + BID_COUNTDOWN_MS;
-            this.timer = setTimeout(() => this.startDemonstrations(), BID_COUNTDOWN_MS);
+            this.countdownEndsAt = Date.now() + LOCK_IN_COUNTDOWN_MS;
+            this.timer = setTimeout(() => this.finishRound(), LOCK_IN_COUNTDOWN_MS);
         }
         this.changed();
         return ok;
     }
 
-    demoMove(playerId: string, round: unknown, moveIndex: unknown, color: unknown, to: unknown): ActionResult {
-        const demo = this.demo;
+    showSolution(playerId: string, round: unknown): ActionResult {
+        if (playerId !== this.hostId) return fail('Only the host can show the optimal solution.');
         if (round !== this.roundNumber) return fail(STALE_ROUND);
-        if (this.phase !== 'demonstrating' || !demo || !this.puzzle || demo.bid.playerId !== playerId) {
-            return fail("It's not your turn to demonstrate.");
-        }
-        // The board changed since the client chose this move (e.g. a second click before the first landed).
-        if (moveIndex !== demo.movesMade) return fail('That move was based on an outdated board, so it was ignored.');
-        if (!ROBOT_COLORS.includes(color as RobotColor) || !isPosition(to)) return fail('Invalid move.');
-
-        const robotColor = color as RobotColor;
-        const { walls, target } = this.puzzle.state;
-        const legal = calculateMoves(demo.robots[robotColor], demo.robots, walls).some(p => p.x === to.x && p.y === to.y);
-        if (!legal) return fail('That robot cannot move there.');
-
-        demo.robots = { ...demo.robots, [robotColor]: { color: robotColor, x: to.x, y: to.y } };
-        demo.movesMade++;
-
-        const targetRobot = demo.robots[target.color];
-        if (targetRobot.x === target.x && targetRobot.y === target.y) {
-            this.player(playerId)!.score++;
-            this.reveal(playerId, demo.movesMade, demo.robots);
-        } else if (demo.movesMade >= demo.bid.moves) {
-            this.failDemo();
-        } else {
+        if (this.phase !== 'revealed') return fail('The optimal solution can be shown once the round is over.');
+        if (!this.solutionShown) {
+            this.solutionShown = true;
             this.changed();
         }
-        return ok;
-    }
-
-    forfeitDemo(playerId: string, round: unknown): ActionResult {
-        if (round !== this.roundNumber) return fail(STALE_ROUND);
-        if (this.phase !== 'demonstrating' || this.demo?.bid.playerId !== playerId) return fail("It's not your turn to demonstrate.");
-        this.failDemo();
         return ok;
     }
 
@@ -213,18 +214,15 @@ export class Lobby {
             phase: this.phase,
             roundNumber: this.roundNumber,
             puzzle: this.puzzle?.state ?? null,
-            bids: this.bids.map(b => ({ playerId: b.playerId, moves: b.moves })),
+            lockIns: this.lockIns.map(l => ({ playerId: l.playerId, moves: l.route.length })),
             countdownEndsAt: this.countdownEndsAt,
-            failedPlayerIds: [...this.failed],
-            demo: this.demo && {
-                playerId: this.demo.bid.playerId,
-                bid: this.demo.bid.moves,
-                robots: this.demo.robots,
-                movesMade: this.demo.movesMade,
-                endsAt: this.demo.endsAt,
-            },
             outcome: this.phase === 'revealed' && this.outcome
-                ? { ...this.outcome, solution: this.puzzle?.solution.path ?? [] }
+                ? {
+                    winnerId: this.outcome.winnerId,
+                    moves: this.outcome.route?.length ?? null,
+                    winningRoute: this.outcome.route,
+                    solution: this.solutionShown ? this.puzzle?.solution.path ?? [] : null,
+                }
                 : null,
             serverTime: now,
         };
@@ -232,53 +230,30 @@ export class Lobby {
 
     // --- Round flow ---
 
-    private startDemonstrations() {
+    // The countdown ran out: the best locked-in route wins. Routes were validated when they were
+    // locked in, so the winner scores even if they have since gone offline.
+    private finishRound() {
+        const best = this.lockIns[0];
+        const winner = best && this.player(best.playerId);
+        if (winner) winner.score++;
+        this.reveal(winner ? best : null);
+    }
+
+    private reveal(winning: LockIn | null) {
         this.clearTimer();
         this.countdownEndsAt = null;
-        this.phase = 'demonstrating';
-        this.startNextDemo();
-    }
-
-    // Gives the turn to the best remaining bid. Bidders who are offline when their turn comes are skipped.
-    private startNextDemo() {
-        let next: Bid | undefined;
-        while ((next = this.bids.find(b => !this.failed.includes(b.playerId)))) {
-            if (this.player(next.playerId)?.connectionId) break;
-            this.failed.push(next.playerId);
-        }
-        if (!next || !this.puzzle) {
-            this.reveal(null, null);
-            return;
-        }
-        this.demo = { bid: next, robots: this.puzzle.state.robots, movesMade: 0, endsAt: Date.now() + DEMO_TIME_LIMIT_MS };
-        this.timer = setTimeout(() => this.failDemo(), DEMO_TIME_LIMIT_MS);
-        this.changed();
-    }
-
-    private failDemo() {
-        this.clearTimer();
-        if (this.demo) this.failed.push(this.demo.bid.playerId);
-        this.demo = null;
-        this.startNextDemo();
-    }
-
-    private reveal(winnerId: string | null, moves: number | null, winningRobots: Robots | null = null) {
-        this.clearTimer();
-        this.countdownEndsAt = null;
-        this.demo = null;
         this.phase = 'revealed';
-        this.outcome = { winnerId, moves, winningRobots };
+        this.outcome = { winnerId: winning?.playerId ?? null, route: winning?.route ?? null };
         this.changed();
     }
 
     private resetRound() {
         this.clearTimer();
         this.puzzle = null;
-        this.bids = [];
+        this.lockIns = [];
         this.countdownEndsAt = null;
-        this.failed = [];
-        this.demo = null;
         this.outcome = null;
+        this.solutionShown = false;
     }
 
     // --- Helpers ---
@@ -288,13 +263,16 @@ export class Lobby {
         if (!player) return;
         if (player.removeTimer) clearTimeout(player.removeTimer);
         this.players = this.players.filter(p => p !== player);
-        this.bids = this.bids.filter(b => b.playerId !== playerId);
+        this.lockIns = this.lockIns.filter(l => l.playerId !== playerId);
+        // The countdown only runs while someone has a route locked in.
+        if (this.phase === 'thinking' && this.lockIns.length === 0 && this.countdownEndsAt !== null) {
+            this.clearTimer();
+            this.countdownEndsAt = null;
+        }
 
         if (this.players.length === 0) {
             this.dispose();
             this.deps.onEmpty();
-        } else if (this.demo?.bid.playerId === playerId) {
-            this.failDemo();
         } else {
             this.changed();
         }

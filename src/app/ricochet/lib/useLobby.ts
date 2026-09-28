@@ -1,8 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import type { ActionResult, ClientToServerEvents, JoinResult, LobbySnapshot, ServerToClientEvents, Session } from './protocol';
-import type { Position, RobotColor } from './types';
+import type { ActionResult, ClientToServerEvents, JoinResult, LobbySnapshot, RouteStep, ServerToClientEvents, Session } from './protocol';
 
 const SERVER_URL = process.env.NEXT_PUBLIC_MULTIPLAYER_URL ?? 'http://localhost:3001';
 const ACK_TIMEOUT_MS = 10_000;
@@ -42,10 +41,8 @@ export function useLobby() {
     // Server time minus local time, for showing server deadlines on this device's clock.
     const [clockOffset, setClockOffset] = useState(0);
     const [notice, setNotice] = useState<string | null>(null);
-    // The latest snapshot, so actions can tag themselves with the round and move count they were made against.
+    // The latest snapshot, so actions can tag themselves with the round they were made against.
     const snapshotRef = useRef<LobbySnapshot | null>(null);
-    // A demo move awaiting the server. Clicks are ignored meanwhile, since they'd be based on the pre-move board.
-    const movePendingRef = useRef(false);
 
     const exitLobby = useCallback((reason: string | null) => {
         writeSession(null);
@@ -129,15 +126,7 @@ export function useLobby() {
         }, [exitLobby]),
         startRound: useCallback(() => withSocket(s => s.timeout(ACK_TIMEOUT_MS).emitWithAck('round:start', { round: round() }).then(report)), [withSocket, report, round]),
         skipRound: useCallback(() => withSocket(s => s.timeout(ACK_TIMEOUT_MS).emitWithAck('round:skip', { round: round() }).then(report)), [withSocket, report, round]),
-        placeBid: useCallback((moves: number) => withSocket(s => s.timeout(ACK_TIMEOUT_MS).emitWithAck('bid:place', { round: round(), moves }).then(report)), [withSocket, report, round]),
-        demoMove: useCallback((color: RobotColor, to: Position) => {
-            if (movePendingRef.current) return;
-            const moveIndex = snapshotRef.current?.demo?.movesMade ?? 0;
-            const sent = withSocket(s => s.timeout(ACK_TIMEOUT_MS).emitWithAck('demo:move', { round: round(), moveIndex, color, to }).then(report));
-            if (!sent) return;
-            movePendingRef.current = true;
-            sent.finally(() => { movePendingRef.current = false; });
-        }, [withSocket, report, round]),
-        forfeitDemo: useCallback(() => withSocket(s => s.timeout(ACK_TIMEOUT_MS).emitWithAck('demo:forfeit', { round: round() }).then(report)), [withSocket, report, round]),
+        lockInRoute: useCallback((route: RouteStep[]) => withSocket(s => s.timeout(ACK_TIMEOUT_MS).emitWithAck('route:lockIn', { round: round(), route }).then(report)), [withSocket, report, round]),
+        showSolution: useCallback(() => withSocket(s => s.timeout(ACK_TIMEOUT_MS).emitWithAck('solution:show', { round: round() }).then(report)), [withSocket, report, round]),
     };
 }
