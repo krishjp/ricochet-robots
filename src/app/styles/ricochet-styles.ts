@@ -16,11 +16,14 @@ export const styles = {
     loadingSpinner: "w-16 h-16 animate-spin text-slate-500",
 
     // Board
-    boardContainer: "grid grid-cols-16 border-2 border-slate-400 aspect-square w-full max-w-lg lg:max-w-xl xl:max-w-2xl bg-white shadow-2xl touch-manipulation select-none",
-    cell: "aspect-square flex items-center justify-center relative",
+    boardContainer: "grid grid-cols-16 grid-rows-16 border-2 border-slate-400 aspect-square w-full max-w-lg lg:max-w-xl xl:max-w-2xl bg-white shadow-2xl touch-manipulation select-none",
+    cell: "min-w-0 min-h-0 flex items-center justify-center relative",
 
     // Game Pieces
-    robotContainer: "absolute transition-all ease-in-out duration-200",
+    // Same 16x16 grid as the board, inset by its 2px border, so each robot occupies a real board cell.
+    robotsOverlay: "absolute inset-[2px] grid grid-cols-16 grid-rows-16 pointer-events-none",
+    robotSlot: "relative min-w-0 min-h-0",
+    robotContainer: "absolute flex items-center justify-center",
     robotIcon: (color: keyof typeof colors, isSelected: boolean) =>
         `w-full h-full transition-transform duration-200 ${colors[color].text} ${isSelected ? 'scale-110' : ''}`,
     target: (color: keyof typeof colors) => `w-3/4 h-3/4 ${colors[color].target}`,
