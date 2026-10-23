@@ -128,8 +128,8 @@ function PhaseStatus({ snapshot, playerId, clockOffset, localMoves, localSolved,
                         ? <p className="text-slate-600 mb-3">No one has locked in yet. The first lock-in starts a {LOCK_IN_COUNTDOWN_MS / 1000} second timer.</p>
                         : <p className="mb-3"><span className={`${styles.countdown} text-red-600`}>{countdown}s</span> <span className="text-slate-600">left to beat the best route</span></p>}
 
-                    <div className="flex items-center justify-between mb-3">
-                        <span className={`${orbitron.className}`}>Your route: <span className="text-slate-600">{localMoves} / {MAX_ROUTE_MOVES}</span></span>
+                    <div className="mb-3">
+                        <p className={`${orbitron.className} mb-2`}>Your route: <span className="text-slate-600">{localMoves} / {MAX_ROUTE_MOVES}</span></p>
                         <div className="flex gap-2">
                             <button onClick={onUndoLocal} disabled={localMoves === 0} className={`${styles.buttonBase} ${styles.buttonSlate} ${styles.buttonDisabled} py-1 text-sm`}><Undo2 size={14} /> Undo</button>
                             <button onClick={onResetLocal} disabled={localMoves === 0} className={`${styles.buttonBase} ${styles.buttonBlue} ${styles.buttonDisabled} py-1 text-sm`}><RotateCcw size={14} /> Reset</button>
