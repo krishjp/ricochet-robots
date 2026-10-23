@@ -9,7 +9,7 @@ import HowToPlayModal from './ricochet/components/Info';
 import Board from './ricochet/components/Board';
 import RobotsComponent from './ricochet/components/Robots';
 import { orbitron } from './ricochet/lib/types';
-import { BID_COUNTDOWN_MS, MAX_PLAYERS, ROBOT_COLORS } from './ricochet/lib/constants';
+import { LOCK_IN_COUNTDOWN_MS, MAX_PLAYERS, ROBOT_COLORS } from './ricochet/lib/constants';
 import { DEMO_SOLUTION, DEMO_STATE } from './ricochet/lib/demoPuzzle';
 import { usePathPlayback } from './ricochet/lib/usePathPlayback';
 import { styles, colors } from './styles/ricochet-styles';
@@ -67,8 +67,8 @@ export default function HomePage() {
                             <Users className={colors.green.text} /> Multiplayer
                         </h2>
                         <p className="text-slate-600 mb-4">
-                            Up to {MAX_PLAYERS} players share one board. Lock in your move count, beat the others within{' '}
-                            {BID_COUNTDOWN_MS / 1000} seconds, then prove it on the board.
+                            Up to {MAX_PLAYERS} players share one board. Solve it, lock in your route, and beat the others
+                            within {LOCK_IN_COUNTDOWN_MS / 1000} seconds with a shorter one.
                         </p>
                         <Link href="/ricochet/multiplayer" className={`${styles.buttonBase} ${styles.buttonGreen}`}>
                             Play Multiplayer <ArrowRight size={20} />

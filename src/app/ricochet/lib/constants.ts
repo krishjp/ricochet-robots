@@ -25,10 +25,10 @@ export const REVERSE_WALL_TYPE_MAP = [
 // Multiplayer lobbies
 export const MAX_PLAYERS = 8;
 export const MAX_NAME_LENGTH = 20;
-export const MAX_BID_MOVES = 99;
-// Starts at the first lock-in; others can lock in until it runs out.
-export const BID_COUNTDOWN_MS = 30_000;
-// How long each bidder gets to play their solution before the next bidder's turn.
-export const DEMO_TIME_LIMIT_MS = 60_000;
+// Longest route a player may lock in. Every generated puzzle is solvable within MAX_SOLUTION_MOVES,
+// so this leaves plenty of room for non-optimal routes while bounding what the server replays.
+export const MAX_ROUTE_MOVES = MAX_SOLUTION_MOVES + 8;
+// Starts at the first lock-in; others can lock in (or improve their route) until it runs out.
+export const LOCK_IN_COUNTDOWN_MS = 60_000;
 // How long a disconnected player keeps their seat (and score) before being removed.
 export const RECONNECT_GRACE_MS = 60_000;

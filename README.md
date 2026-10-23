@@ -30,10 +30,10 @@ npm test               # vitest unit tests
 
 ## Multiplayer rules
 
-1. Everyone in the lobby gets the same puzzle and looks for a solution. Practice moves are private.
-2. Lock in a move count once you have a solution. The first lock-in starts a 30 second timer. Until it ends, anyone can lock in, and you can lower your own number. Several players can lock in the same number. Whoever locked in first goes first.
-3. When time's up, the lowest lock-in has 60 seconds to play their solution live, in no more moves than they locked in. If they fail, the next-lowest player gets a turn.
-4. A successful demonstration scores a point, and then everyone sees the optimal route.
+1. Everyone in the lobby gets the same puzzle and solves it on their own private board.
+2. Once the target robot reaches the target, lock in the route you played (at most 20 moves). The server replays it to check it. The first lock-in starts a 60 second timer. Until it ends, anyone can lock in, and you can replace your route with a shorter one.
+3. When time's up, the shortest route scores a point. Among equal routes, whoever locked in first wins.
+4. Everyone watches the winning route, and then the host can reveal the optimal route.
 
 ## Deploy
 

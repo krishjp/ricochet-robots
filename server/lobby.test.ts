@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Lobby, type Puzzle } from './lobby';
 import type { GameState } from '../src/app/ricochet/lib/types';
-import { BID_COUNTDOWN_MS, DEMO_TIME_LIMIT_MS, MAX_PLAYERS, RECONNECT_GRACE_MS } from '../src/app/ricochet/lib/constants';
+import type { RouteStep } from '../src/app/ricochet/lib/protocol';
+import { LOCK_IN_COUNTDOWN_MS, MAX_PLAYERS, MAX_ROUTE_MOVES, RECONNECT_GRACE_MS } from '../src/app/ricochet/lib/constants';
 import { findOptimalPath } from '../src/app/ricochet/lib/solver';
 
 // Red slides south from (0,0) and is stopped on the target at (0,5) by blue: a one-move puzzle.
@@ -16,14 +17,14 @@ const state: GameState = {
     target: { color: 'red', x: 0, y: 5 },
 };
 const puzzle: Puzzle = { state, solution: findOptimalPath(state.robots, state.walls, state.target) };
-const WINNING_MOVE = { color: 'red', to: { x: 0, y: 5 } };
-const WASTED_MOVE = { color: 'red', to: { x: 14, y: 0 } };
+const WINNING_MOVE: RouteStep = { color: 'red', pos: { x: 0, y: 5 } };
 
-// A demo move made with the round and move count the client currently sees.
-const move = (lobby: Lobby, playerId: string, color: string, to: unknown) => {
-    const { roundNumber, demo } = lobby.snapshot();
-    return lobby.demoMove(playerId, roundNumber, demo?.movesMade ?? 0, color, to);
-};
+// A valid route of exactly `moves` moves: yellow slides back and forth along the top row
+// (stopped by red at (0,0) going west), then red makes the winning move.
+const routeOf = (moves: number): RouteStep[] => [
+    ...Array.from({ length: moves - 1 }, (_, i): RouteStep => ({ color: 'yellow', pos: { x: i % 2 === 0 ? 1 : 15, y: 0 } })),
+    WINNING_MOVE,
+];
 
 const setup = async (playerCount: number) => {
     const onEmpty = vi.fn();
@@ -76,30 +77,60 @@ describe('joining', () => {
     });
 });
 
-describe('bidding', () => {
-    it('starts the countdown at the first lock-in and only allows lowering a bid', async () => {
+describe('locking in', () => {
+    it('starts the countdown at the first lock-in and only accepts shorter replacement routes', async () => {
         const { lobby, ids } = await setup(2);
         await startThinking(lobby, ids[0]);
         expect(lobby.snapshot().countdownEndsAt).toBeNull();
 
-        expect(lobby.placeBid(ids[0], 1, 5)).toEqual({ ok: true });
-        expect(lobby.snapshot().countdownEndsAt).toBe(Date.now() + BID_COUNTDOWN_MS);
-        expect(lobby.placeBid(ids[0], 1, 6)).toMatchObject({ ok: false });
-        expect(lobby.placeBid(ids[0], 1, 0)).toMatchObject({ ok: false });
-        expect(lobby.placeBid(ids[0], 1, 2.5)).toMatchObject({ ok: false });
-        expect(lobby.placeBid(ids[0], 1, 4)).toEqual({ ok: true });
+        expect(lobby.lockInRoute(ids[0], 1, routeOf(5))).toEqual({ ok: true });
+        expect(lobby.snapshot().countdownEndsAt).toBe(Date.now() + LOCK_IN_COUNTDOWN_MS);
+        expect(lobby.lockInRoute(ids[0], 1, routeOf(6))).toMatchObject({ ok: false });
+        expect(lobby.lockInRoute(ids[0], 1, routeOf(3))).toEqual({ ok: true });
+        expect(lobby.snapshot().lockIns).toEqual([{ playerId: ids[0], moves: 3 }]);
     });
 
-    it('orders equal bids by who locked in first, and a lowered bid counts as a new lock-in', async () => {
+    it('rejects routes that break the rules or do not solve the puzzle', async () => {
+        const { lobby, ids } = await setup(1);
+        await startThinking(lobby, ids[0]);
+        const rejected = [
+            [],
+            'not a route',
+            [{ color: 'yellow', pos: { x: 1, y: 0 } }], // legal, but the target robot never arrives
+            [{ color: 'red', pos: { x: 0, y: 3 } }], // robots can't stop mid-slide
+            [{ color: 'purple', pos: { x: 0, y: 5 } }],
+            [{ color: 'red', pos: { x: -1, y: 0 } }],
+            [{ color: 'red' }],
+            [null],
+        ];
+        for (const route of rejected) expect(lobby.lockInRoute(ids[0], 1, route)).toMatchObject({ ok: false });
+        expect(lobby.snapshot()).toMatchObject({ lockIns: [], countdownEndsAt: null });
+    });
+
+    it(`accepts routes up to ${MAX_ROUTE_MOVES} moves and rejects longer ones`, async () => {
+        const { lobby, ids } = await setup(2);
+        await startThinking(lobby, ids[0]);
+        expect(lobby.lockInRoute(ids[0], 1, routeOf(MAX_ROUTE_MOVES + 1))).toMatchObject({ ok: false });
+        expect(lobby.lockInRoute(ids[1], 1, routeOf(MAX_ROUTE_MOVES))).toEqual({ ok: true });
+    });
+
+    it('ranks shorter routes first, then earlier lock-ins, and a replacement counts as a new lock-in', async () => {
         const { lobby, ids } = await setup(3);
         await startThinking(lobby, ids[0]);
-        lobby.placeBid(ids[0], 1, 3);
-        lobby.placeBid(ids[1], 1, 4);
-        lobby.placeBid(ids[2], 1, 3);
-        expect(lobby.snapshot().bids.map(b => b.playerId)).toEqual([ids[0], ids[2], ids[1]]);
+        lobby.lockInRoute(ids[0], 1, routeOf(3));
+        lobby.lockInRoute(ids[1], 1, routeOf(4));
+        lobby.lockInRoute(ids[2], 1, routeOf(3));
+        expect(lobby.snapshot().lockIns.map(l => l.playerId)).toEqual([ids[0], ids[2], ids[1]]);
 
-        lobby.placeBid(ids[1], 1, 3);
-        expect(lobby.snapshot().bids.map(b => b.playerId)).toEqual([ids[0], ids[2], ids[1]]);
+        lobby.lockInRoute(ids[1], 1, routeOf(3));
+        expect(lobby.snapshot().lockIns.map(l => l.playerId)).toEqual([ids[0], ids[2], ids[1]]);
+    });
+
+    it('never sends routes to clients before the round ends', async () => {
+        const { lobby, ids } = await setup(1);
+        await startThinking(lobby, ids[0]);
+        lobby.lockInRoute(ids[0], 1, routeOf(2));
+        expect(JSON.stringify(lobby.snapshot())).not.toContain('"pos"');
     });
 
     it('lets the host skip a puzzle nobody has locked in on', async () => {
@@ -107,93 +138,80 @@ describe('bidding', () => {
         await startThinking(lobby, ids[0]);
         expect(lobby.skipRound(ids[1], 1)).toMatchObject({ ok: false });
         expect(lobby.skipRound(ids[0], 1)).toEqual({ ok: true });
-        expect(lobby.snapshot().outcome).toEqual({ winnerId: null, moves: null, winningRobots: null, solution: puzzle.solution.path });
+        expect(lobby.snapshot().outcome).toEqual({ winnerId: null, moves: null, winningRoute: null, solution: null });
+    });
+
+    it('stops the countdown if every locked-in player leaves', async () => {
+        const { lobby, ids } = await setup(2);
+        await startThinking(lobby, ids[0]);
+        lobby.lockInRoute(ids[1], 1, routeOf(2));
+        lobby.leave(ids[1]);
+        expect(lobby.snapshot()).toMatchObject({ phase: 'thinking', lockIns: [], countdownEndsAt: null });
+        vi.advanceTimersByTime(LOCK_IN_COUNTDOWN_MS);
+        expect(lobby.snapshot().phase).toBe('thinking');
     });
 });
 
-describe('demonstrating', () => {
-    const toDemo = async (bids: number[]) => {
-        const setupResult = await setup(bids.length);
+describe('round end', () => {
+    const toReveal = async (routeLengths: number[]) => {
+        const setupResult = await setup(routeLengths.length);
         const { lobby, ids } = setupResult;
         await startThinking(lobby, ids[0]);
-        bids.forEach((moves, i) => lobby.placeBid(ids[i], 1, moves));
-        vi.advanceTimersByTime(BID_COUNTDOWN_MS);
-        expect(lobby.snapshot().phase).toBe('demonstrating');
+        routeLengths.forEach((moves, i) => lobby.lockInRoute(ids[i], 1, routeOf(moves)));
+        vi.advanceTimersByTime(LOCK_IN_COUNTDOWN_MS);
+        expect(lobby.snapshot().phase).toBe('revealed');
         return setupResult;
     };
 
-    it('gives the lowest bidder the first turn and hides the solution until the round ends', async () => {
-        const { lobby, ids } = await toDemo([3, 2]);
+    it('awards the shortest route when the countdown ends and shares it, but keeps the optimal route hidden', async () => {
+        const { lobby, ids } = await toReveal([3, 2]);
         const snapshot = lobby.snapshot();
-        expect(snapshot.demo).toMatchObject({ playerId: ids[1], bid: 2, movesMade: 0, robots: state.robots });
-        expect(snapshot.outcome).toBeNull();
-        expect(lobby.placeBid(ids[0], 1, 1)).toMatchObject({ ok: false });
+        expect(snapshot.outcome).toEqual({ winnerId: ids[1], moves: 2, winningRoute: routeOf(2), solution: null });
+        expect(snapshot.players.find(p => p.id === ids[1])?.score).toBe(1);
+        expect(snapshot.players.find(p => p.id === ids[0])?.score).toBe(0);
+        expect(lobby.lockInRoute(ids[0], 1, routeOf(1))).toMatchObject({ ok: false });
     });
 
-    it('awards the point and reveals the optimal solution on a successful demonstration', async () => {
-        const { lobby, ids } = await toDemo([2]);
-        expect(move(lobby, ids[0], WINNING_MOVE.color, WINNING_MOVE.to)).toEqual({ ok: true });
-
-        const snapshot = lobby.snapshot();
-        expect(snapshot.phase).toBe('revealed');
-        expect(snapshot.outcome).toEqual({
-            winnerId: ids[0],
-            moves: 1,
-            winningRobots: { ...state.robots, red: { color: 'red', ...WINNING_MOVE.to } },
-            solution: puzzle.solution.path,
-        });
-        expect(snapshot.players[0].score).toBe(1);
-    });
-
-    it('rejects moves from other players and moves the rules do not allow', async () => {
-        const { lobby, ids } = await toDemo([2, 3]);
-        expect(move(lobby, ids[1], WINNING_MOVE.color, WINNING_MOVE.to)).toMatchObject({ ok: false });
-        expect(move(lobby, ids[0], 'red', { x: 0, y: 3 })).toMatchObject({ ok: false });
-        expect(move(lobby, ids[0], 'purple', WINNING_MOVE.to)).toMatchObject({ ok: false });
-        expect(move(lobby, ids[0], 'red', { x: -1, y: 0 })).toMatchObject({ ok: false });
-        expect(lobby.snapshot().demo?.movesMade).toBe(0);
-    });
-
-    it('passes the turn on when a bidder runs out of moves, runs out of time, or forfeits', async () => {
-        const { lobby, ids } = await toDemo([1, 2, 2, 3]);
-
-        move(lobby, ids[0], WASTED_MOVE.color, WASTED_MOVE.to);
-        expect(lobby.snapshot().demo).toMatchObject({ playerId: ids[1], movesMade: 0, robots: state.robots });
-
-        vi.advanceTimersByTime(DEMO_TIME_LIMIT_MS);
-        expect(lobby.snapshot().demo?.playerId).toBe(ids[2]);
-
-        expect(lobby.forfeitDemo(ids[2], 1)).toEqual({ ok: true });
-        expect(lobby.snapshot().demo?.playerId).toBe(ids[3]);
-        expect(lobby.snapshot().failedPlayerIds).toEqual([ids[0], ids[1], ids[2]]);
-
-        move(lobby, ids[3], WINNING_MOVE.color, WINNING_MOVE.to);
-        expect(lobby.snapshot().outcome?.winnerId).toBe(ids[3]);
-    });
-
-    it('skips offline bidders and ends with no winner when every bidder fails', async () => {
+    it('still awards an offline winner, since their route was already checked', async () => {
         const { lobby, ids } = await setup(2);
         await startThinking(lobby, ids[0]);
-        lobby.placeBid(ids[0], 1, 1);
-        lobby.placeBid(ids[1], 1, 2);
-        lobby.disconnect(ids[0], 'conn-0');
-        vi.advanceTimersByTime(BID_COUNTDOWN_MS);
-        expect(lobby.snapshot().demo?.playerId).toBe(ids[1]);
-
-        lobby.forfeitDemo(ids[1], 1);
-        const snapshot = lobby.snapshot();
-        expect(snapshot.phase).toBe('revealed');
-        expect(snapshot.outcome?.winnerId).toBeNull();
-        expect(snapshot.players.every(p => p.score === 0)).toBe(true);
+        lobby.lockInRoute(ids[1], 1, routeOf(1));
+        lobby.disconnect(ids[1], 'conn-1');
+        vi.advanceTimersByTime(LOCK_IN_COUNTDOWN_MS);
+        expect(lobby.snapshot().outcome?.winnerId).toBe(ids[1]);
     });
 
-    it('lets the host start the next round once the solution is revealed', async () => {
-        const { lobby, ids } = await toDemo([2]);
-        expect(lobby.startRound(ids[0], lobby.snapshot().roundNumber)).toMatchObject({ ok: false });
-        move(lobby, ids[0], WINNING_MOVE.color, WINNING_MOVE.to);
+    it('only lets the host show the optimal route, and only after the round ends', async () => {
+        const { lobby, ids } = await setup(2);
         await startThinking(lobby, ids[0]);
-        expect(lobby.snapshot()).toMatchObject({ roundNumber: 2, bids: [], outcome: null, failedPlayerIds: [] });
+        expect(lobby.showSolution(ids[0], 1)).toMatchObject({ ok: false });
+        lobby.lockInRoute(ids[1], 1, routeOf(2));
+        vi.advanceTimersByTime(LOCK_IN_COUNTDOWN_MS);
+
+        expect(lobby.showSolution(ids[1], 1)).toMatchObject({ ok: false });
+        expect(lobby.snapshot().outcome?.solution).toBeNull();
+        expect(lobby.showSolution(ids[0], 1)).toEqual({ ok: true });
+        expect(lobby.showSolution(ids[0], 1)).toEqual({ ok: true });
+        expect(lobby.snapshot().outcome?.solution).toEqual(puzzle.solution.path);
+    });
+
+    it('lets the host start the next round once this one is over', async () => {
+        const { lobby, ids } = await toReveal([2]);
+        lobby.showSolution(ids[0], 1);
+        await startThinking(lobby, ids[0]);
+        expect(lobby.snapshot()).toMatchObject({ roundNumber: 2, lockIns: [], outcome: null, countdownEndsAt: null });
         expect(lobby.snapshot().players[0].score).toBe(1);
+
+        // The next round's solution starts hidden again.
+        lobby.skipRound(ids[0], 2);
+        expect(lobby.snapshot().outcome?.solution).toBeNull();
+    });
+
+    it('cannot start a new round while one is running', async () => {
+        const { lobby, ids } = await setup(1);
+        await startThinking(lobby, ids[0]);
+        lobby.lockInRoute(ids[0], 1, routeOf(2));
+        expect(lobby.startRound(ids[0], lobby.snapshot().roundNumber)).toMatchObject({ ok: false });
     });
 });
 
@@ -201,21 +219,21 @@ describe('concurrent and stale actions', () => {
     it('breaks ties between near-simultaneous lock-ins by arrival order, and ignores repeated lock-ins', async () => {
         const { lobby, ids } = await setup(3);
         await startThinking(lobby, ids[0]);
-        lobby.placeBid(ids[1], 1, 4);
-        lobby.placeBid(ids[0], 1, 4);
-        // A double-clicked lock-in keeps its original place ahead of later equal bids.
-        expect(lobby.placeBid(ids[1], 1, 4)).toEqual({ ok: true });
-        lobby.placeBid(ids[2], 1, 4);
-        expect(lobby.snapshot().bids.map(b => b.playerId)).toEqual([ids[1], ids[0], ids[2]]);
+        lobby.lockInRoute(ids[1], 1, routeOf(4));
+        lobby.lockInRoute(ids[0], 1, routeOf(4));
+        // A double-clicked lock-in keeps its original place ahead of later equal routes.
+        expect(lobby.lockInRoute(ids[1], 1, routeOf(4))).toEqual({ ok: true });
+        lobby.lockInRoute(ids[2], 1, routeOf(4));
+        expect(lobby.snapshot().lockIns.map(l => l.playerId)).toEqual([ids[1], ids[0], ids[2]]);
     });
 
     it('rejects lock-ins that arrive after the countdown ends', async () => {
         const { lobby, ids } = await setup(2);
         await startThinking(lobby, ids[0]);
-        lobby.placeBid(ids[0], 1, 5);
-        vi.advanceTimersByTime(BID_COUNTDOWN_MS);
-        expect(lobby.placeBid(ids[1], 1, 3)).toMatchObject({ ok: false });
-        expect(lobby.snapshot().bids).toHaveLength(1);
+        lobby.lockInRoute(ids[0], 1, routeOf(5));
+        vi.advanceTimersByTime(LOCK_IN_COUNTDOWN_MS);
+        expect(lobby.lockInRoute(ids[1], 1, routeOf(3))).toMatchObject({ ok: false });
+        expect(lobby.snapshot().outcome?.winnerId).toBe(ids[0]);
     });
 
     it('rejects actions aimed at an earlier round', async () => {
@@ -224,9 +242,10 @@ describe('concurrent and stale actions', () => {
         lobby.skipRound(ids[0], 1);
         await startThinking(lobby, ids[0]);
         expect(lobby.snapshot().roundNumber).toBe(2);
-        expect(lobby.placeBid(ids[1], 1, 3)).toMatchObject({ ok: false });
+        expect(lobby.lockInRoute(ids[1], 1, routeOf(3))).toMatchObject({ ok: false });
         expect(lobby.skipRound(ids[0], 1)).toMatchObject({ ok: false });
-        expect(lobby.snapshot()).toMatchObject({ phase: 'thinking', bids: [] });
+        expect(lobby.showSolution(ids[0], 1)).toMatchObject({ ok: false });
+        expect(lobby.snapshot()).toMatchObject({ phase: 'thinking', lockIns: [] });
     });
 
     it('treats a repeated start request as a duplicate instead of skipping the new puzzle', async () => {
@@ -235,15 +254,5 @@ describe('concurrent and stale actions', () => {
         expect(lobby.startRound(ids[0], 0)).toEqual({ ok: true });
         await vi.advanceTimersByTimeAsync(0);
         expect(lobby.snapshot()).toMatchObject({ roundNumber: 1, phase: 'thinking' });
-    });
-
-    it('ignores a second demo move computed from the same board', async () => {
-        const { lobby, ids } = await setup(1);
-        await startThinking(lobby, ids[0]);
-        lobby.placeBid(ids[0], 1, 3);
-        vi.advanceTimersByTime(BID_COUNTDOWN_MS);
-        expect(lobby.demoMove(ids[0], 1, 0, 'green', { x: 15, y: 1 })).toEqual({ ok: true });
-        expect(lobby.demoMove(ids[0], 1, 0, 'green', { x: 0, y: 15 })).toMatchObject({ ok: false });
-        expect(lobby.snapshot().demo).toMatchObject({ movesMade: 1 });
     });
 });
