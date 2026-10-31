@@ -9,7 +9,7 @@
     "dev:server": "tsx watch server/index.ts",
     "build:server": "esbuild server/index.ts server/puzzleWorker.ts --bundle --platform=node --target=node20 --packages=external --outdir=dist-server",
     "start:server": "node dist-server/index.js",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "vitest run"
   },
   "dependencies": {
