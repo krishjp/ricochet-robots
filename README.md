@@ -4,7 +4,7 @@ A [Ricochet Robots](https://en.wikipedia.org/wiki/Ricochet_Robot) puzzle game bu
 
 Puzzles are generated randomly and solved exactly in the background: a Web Worker runs a breadth-first search over full board states so the shown "optimal solution" is guaranteed shortest, without blocking the UI. Puzzles can also be shared and reloaded via a compact Game ID.
 
-See [CLAUDE.md](./CLAUDE.md) for architecture, the board model, the solver/generator, and the Game ID format.
+See [CLAUDE.md](./CLAUDE.md) for architecture, the board model, the solver/generator, and the Game ID format. Planned features and improvements are in [docs/ROADMAP.md](./docs/ROADMAP.md).
 
 ## Getting Started
 
@@ -24,7 +24,7 @@ Other scripts:
 ```bash
 npm run build          # production build; also runs type-checking
 npm run build:server   # bundle the multiplayer server into dist-server/
-npm run lint           # next lint
+npm run lint           # eslint
 npm test               # vitest unit tests
 ```
 
@@ -38,4 +38,4 @@ npm test               # vitest unit tests
 ## Deploy
 
 - **Web app (Vercel):** uses `@vercel/speed-insights`. Set `NEXT_PUBLIC_MULTIPLAYER_URL` to the Render server's URL.
-- **Multiplayer server (Render):** create a Blueprint from `render.yaml`, then set `CLIENT_ORIGIN` to the web app's origin, e.g. `https://your-app.vercel.app`. Comma-separate multiple origins. Lobbies are held in memory, so run a single instance. On the free plan the server sleeps when idle, and the first connection afterwards can take up to a minute.
+- **Multiplayer server (Render):** create a Blueprint from `render.yaml`, then set `CLIENT_ORIGIN` to the web app's origin, e.g. `https://your-app.vercel.app`. Comma-separate multiple origins. `TRUST_PROXY=true` is set in the blueprint so rate limits see real client addresses. Lobbies are held in memory, so run a single instance. On the free plan the server sleeps when idle, and the first connection afterwards can take up to a minute.

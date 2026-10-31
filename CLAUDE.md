@@ -10,11 +10,11 @@ npm run dev:server    # multiplayer Socket.IO server at http://localhost:3001 (t
 npm run build         # production build; also runs type-checking (including server/)
 npm run build:server  # esbuild bundle of server/ into dist-server/
 npm run start:server  # run the bundled server (what Render runs)
-npm run lint          # next lint
-npm test              # vitest unit tests for solver.ts, gameId.ts, boardGenerator.ts, and server/lobby.ts
+npm run lint          # eslint .
+npm test              # vitest: solver, gameId, boardGenerator, useCountdown's math, server/lobby, server/rateLimit, and socket integration tests for server/gameServer
 ```
 
-Tests live next to the code they cover (`*.test.ts` under `src/app/ricochet/lib/` and `server/`) and only exercise the pure logic modules. Nothing in `components/`, the pages, or the socket wiring in `server/index.ts` is tested.
+Tests live next to the code they cover (`*.test.ts` under `src/app/ricochet/lib/` and `server/`). They cover the pure logic modules and the server's socket wiring (`server/gameServer.test.ts` starts the real server on an ephemeral port with a stubbed puzzle generator and connects `socket.io-client` sockets). Nothing in `components/`, the pages, or the React hooks is tested.
 
 ## Architecture
 
@@ -58,13 +58,15 @@ The server is authoritative. It generates each puzzle, keeps the optimal solutio
   - **Thinking:** players solve the puzzle on their private board and lock in the full route (at most `MAX_ROUTE_MOVES`, which is `MAX_SOLUTION_MOVES + 8`). The server rejects a route unless every move is legal and it ends with the target robot on the target. The first lock-in starts `LOCK_IN_COUNTDOWN_MS`. A player can only replace their route with a shorter one, and a replacement counts as a new lock-in. Only route lengths appear in snapshots until the round ends.
   - **Revealed:** when the countdown ends, the shortest route (earliest lock-in among equals) scores 1 point, even if its player has gone offline. The snapshot then carries the winning route, which every client plays back. The optimal solution (`outcome.solution`) stays `null` until the host calls `showSolution`, and then every client plays it.
   - **Host:** the host is the earliest-joined connected player. Only the host can start or skip a round, or show the optimal solution.
-- `server/index.ts`: Socket.IO wiring, lobby codes, and seat ownership.
+- `server/index.ts`: reads the environment and starts `createGameServer`. `server/gameServer.ts` holds the Socket.IO wiring, lobby codes, seat ownership, and the abuse limits below.
   - Each player holds a secret `token`. The client keeps it in `sessionStorage` and uses it to rejoin after a reconnect or reload.
   - A newer socket for the same player takes the seat over and sends the old socket `lobby:ended`.
+  - A socket holds one seat. Joining another lobby leaves the old one; reclaiming a different seat with `lobby:rejoin` releases the old seat as a disconnect (it keeps its `RECONNECT_GRACE_MS`). Two tabs of one browser are two sockets with their own `sessionStorage` tokens, so one person can sit in two lobbies at once, even under the same name.
   - A disconnected player keeps their seat for `RECONNECT_GRACE_MS`.
+  - **Limits** (`GameServerOptions`, defaults in `DEFAULTS`): at most 200 lobbies; a lobby with no activity for an hour is closed and its players get `lobby:ended`; each socket gets a token bucket (burst 20, 5 events/s) enforced in `socket.use`; each address may create 5 lobbies per minute and make 20 failed joins per minute (to stop code guessing); payloads are capped at 16 KB. Limiters live in `server/rateLimit.ts` and take a clock for tests. With `TRUST_PROXY=true` the address is the last `X-Forwarded-For` entry (what Render's proxy appended); otherwise it is the peer address. Set `LOG_CLIENT_ADDRESSES=true` temporarily to log the raw `X-Forwarded-For`, the peer address, and the address used for limiting on every connection (addresses are personal data, so switch it off again).
 - `server/generatePuzzle.ts` runs `generateSolvablePuzzle` on a `worker_threads` worker (`server/puzzleWorker.ts`) so generation doesn't block other lobbies. The worker path uses the running file's extension, `.ts` under tsx and `.js` in the bundle.
 - Client: `useLobby` (socket connection, rejoin, and actions), `useCountdown` (converts server deadlines to local time using `serverTime`), `usePathPlayback` (plays back the winning and optimal routes), and the components `LobbyEntry` and `MultiplayerPanel`.
-- Deployment: `render.yaml` defines the Render web service. Set `CLIENT_ORIGIN` on Render to the site's origin(s), comma-separated, for CORS. Set `NEXT_PUBLIC_MULTIPLAYER_URL` on Vercel to the Render URL; it defaults to `http://localhost:3001`. Lobbies live in memory, so run exactly one instance. A restart or a free-plan spin-down ends every lobby.
+- Deployment: `render.yaml` defines the Render web service. Set `CLIENT_ORIGIN` on Render to the site's origin(s), comma-separated, for CORS. Set `TRUST_PROXY=true` (already in `render.yaml`) so rate limits see real client addresses. Set `NEXT_PUBLIC_MULTIPLAYER_URL` on Vercel to the Render URL; it defaults to `http://localhost:3001`. Lobbies live in memory, so run exactly one instance. A restart or a free-plan spin-down ends every lobby.
 
 ### Board model
 
@@ -103,6 +105,10 @@ Movement rules are defined once, in `solver.ts`. The UI's `calculateMoves` and t
 
 ## Config quirks
 
-- The repo has two PostCSS configs. `postcss.config.js` is the Tailwind 3 setup that matches the installed deps. `postcss.config.mjs` references `@tailwindcss/postcss` (Tailwind 4), which is not installed.
-- `eslint.config.mjs` is a flat config, using `@eslint/eslintrc`'s `FlatCompat` to load `eslint-config-next`'s legacy-style configs under ESLint 9.
-- `next lint` is deprecated as of Next.js 15 and will be removed in Next.js 16; migrating to the ESLint CLI directly (`npx @next/codemod@canary next-lint-to-eslint-cli .`) is a future task, not yet done.
+- There is one PostCSS config, `postcss.config.js` (Tailwind 3, matching the installed deps). Don't add a Tailwind 4 `@tailwindcss/postcss` config unless Tailwind itself is upgraded.
+- `eslint.config.mjs` is a flat config, using `@eslint/eslintrc`'s `FlatCompat` to load `eslint-config-next`'s legacy-style configs under ESLint 9. `npm run lint` runs the ESLint CLI directly (`next lint` is deprecated and removed in Next.js 16).
+- CI (`.github/workflows/ci.yml`) runs lint, tests, the Next build (which also type-checks `server/`), and the server bundle on every PR and push to `main`.
+
+## Roadmap
+
+Ideas that are not built yet (daily puzzle, hints, difficulty levels, multiplayer extras, accessibility, and more) are collected in [docs/ROADMAP.md](./docs/ROADMAP.md).
