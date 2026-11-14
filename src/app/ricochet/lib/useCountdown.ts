@@ -1,6 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
 
+/** Whole seconds left until a server-time deadline, given the local time and `clockOffset` (server time minus local time). */
+export const secondsLeft = (endsAt: number, clockOffset: number, now: number): number =>
+    Math.max(0, Math.ceil((endsAt - clockOffset - now) / 1000));
+
 /** Whole seconds left until a server-time deadline, or null without one. `clockOffset` is server time minus local time. */
 export function useCountdown(endsAt: number | null, clockOffset: number): number | null {
     const [now, setNow] = useState(() => Date.now());
@@ -12,5 +16,5 @@ export function useCountdown(endsAt: number | null, clockOffset: number): number
         return () => clearInterval(interval);
     }, [endsAt]);
 
-    return endsAt === null ? null : Math.max(0, Math.ceil((endsAt - clockOffset - now) / 1000));
+    return endsAt === null ? null : secondsLeft(endsAt, clockOffset, now);
 }

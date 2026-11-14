@@ -15,3 +15,6 @@ services:
       # Comma-separated origins allowed to connect, e.g. https://your-app.vercel.app
       - key: CLIENT_ORIGIN
         sync: false
+      # Render's proxy sets X-Forwarded-For; the server reads the client address from it for rate limiting.
+      - key: TRUST_PROXY
+        value: "true"

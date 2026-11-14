@@ -74,7 +74,7 @@ export default function Panel({ target, moveCount, solved, isAnimating, gameId, 
                 <div className={styles.panelCard}>
                      <h2 className={`${orbitron.className} text-xl font-normal mb-2 `}>Load a Game</h2>
                      <div className="flex gap-2">
-                        <input type="text" placeholder="Paste a Game ID..." value={inputId} onChange={(e) => onInputChange(e.target.value)} className="flex-grow bg-white border border-slate-300 px-2 py-1 rounded-md text-sm" />
+                        <input type="text" placeholder="Paste a Game ID..." value={inputId} onChange={(e) => onInputChange(e.target.value)} className={`${styles.input} flex-grow`} />
                         <button onClick={onLoadGame} disabled={!inputId || isAnimating} className={`${styles.buttonBase} ${styles.buttonGreen} w-24`}><Upload size={16}/> Load</button>
                     </div>
                 </div>

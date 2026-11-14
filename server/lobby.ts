@@ -1,5 +1,5 @@
 // One multiplayer lobby: its players, scores, and the current round's state machine.
-// Socket handling lives in index.ts; this module only sees player ids and connection ids.
+// Socket handling lives in gameServer.ts; this module only sees player ids and connection ids.
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { GameState, Position, RobotColor, Robots, SolveResult } from '../src/app/ricochet/lib/types';
 import type { ActionResult, LobbyPhase, LobbySnapshot, RouteStep } from '../src/app/ricochet/lib/protocol';
@@ -127,6 +127,14 @@ export class Lobby {
 
     leave(playerId: string) {
         this.removePlayer(playerId);
+    }
+
+    // Shuts the lobby down without notifying `onEmpty` (the caller is already removing it).
+    // Returns the ids of the players who were still seated.
+    close(): string[] {
+        const ids = this.players.map(p => p.id);
+        this.dispose();
+        return ids;
     }
 
     // `seenRound` is the round the host was looking at. If a newer one exists, this is a duplicate
